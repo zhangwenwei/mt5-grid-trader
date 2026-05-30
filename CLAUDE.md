@@ -8,7 +8,11 @@ USDJPY 上验证过的区间网格 EA。开发 / 修改本项目时遵守以下�
 - 编译产物 `GridTrader.ex5`、编译日志 `GridTrader.log` 不进版本控制。
 
 ## 策略逻辑（改动前先理解，勿做反）
-- **直接填上下边界价**：`InpUpperPrice` / `InpLowerPrice`，中线 = (上界+下界)/2 自动算。
+- **上下边界**：`InpUpperPrice` / `InpLowerPrice` 填 0 = 自动计算、填值 = 手动覆盖；中线 = (上界+下界)/2 自动算。
+- **自动定界 `InpBoundsMode`**：唐奇安 high/low（含影线）/ 唐奇安 close（去插针）/ 中线±k×ATR 三选一；`InpAutoLookback` 回看根数，ATR 模式另有 `InpATRPeriod`/`InpATRMult`。
+- **边界收缩 `InpBoundsShrinkPct`**：算出区间后向内收 X%（0~40），避免贴极值开单、缓解超界全平。
+- **超界行为 `InpBreakoutMode`**：全平并暂停（原行为）/ 只暂停不平（让区间内单自行止盈）。
+- **全局熔断**：`InpGlobalTP` 总浮盈触线全平；`InpGlobalSL` 总浮亏触线全平并永久停机（`g_halted`）。单位是账户货币，0=关闭。
 - **上半区（中线~上界）做空，下半区（下界~中线）做多**；中线本身不开单（从中线 ±一格起）。
 - 每单往**中线方向**走一个网格（`InpTakeProfitPips`）即单笔止盈。
 - **超界全平**：用上一根已收盘 K 线 `iClose(_Symbol,_Period,1)`，close > 上界 或 < 下界 → `CloseAll()` 并暂停；close 回到区间内自动恢复。
