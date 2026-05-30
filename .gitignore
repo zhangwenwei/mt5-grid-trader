@@ -1,0 +1,10 @@
+# MQL5 编译产物与日志
+*.ex5
+*.log
+
+# Claude 工作目录
+.claude/
+
+# 系统/编辑器
+Thumbs.db
+desktop.ini
