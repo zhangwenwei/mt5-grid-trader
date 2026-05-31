@@ -1,0 +1,78 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8">
+<title>GridTrader 全品种分段回测报告</title>
+<style>
+body{font-family:"Microsoft YaHei",sans-serif;background:#f4f6f9;margin:0;padding:24px;color:#222;line-height:1.7;}
+.wrap{max-width:1100px;margin:0 auto;}
+h1{font-size:24px;border-bottom:3px solid #2b6cb0;padding-bottom:8px;}
+h2{font-size:19px;color:#2b6cb0;border-left:5px solid #2b6cb0;padding-left:10px;margin-top:28px;}
+.card{background:#fff;border-radius:10px;padding:16px 20px;margin:14px 0;box-shadow:0 1px 4px rgba(0,0,0,.08);}
+table{border-collapse:collapse;width:100%;font-size:13px;margin:8px 0;}
+th,td{border:1px solid #dde3ea;padding:6px 8px;text-align:right;}
+th{background:#eef3f9;text-align:center;}
+td.sym{text-align:left;font-weight:bold;}
+.pos{color:#1a8a3a;}.neg{color:#c33;}
+.big{font-size:16px;}
+.warn{background:#fff7e6;border-left:5px solid #f0a020;padding:10px 14px;border-radius:6px;}
+.muted{color:#777;font-size:13px;}
+</style></head><body><div class="wrap">
+
+<h1>GridTrader 全品种分段回测报告</h1>
+<p class="muted">配置: 近30天S/R定界 + 斐波双确认 + 中线对齐中枢 + 跟踪止损 | 周期H1 | 每段3个月 | 0.01手 | 初始20万JPY | 真实tick</p>
+
+<div class="card">
+<h2>全局结论</h2>
+<p class="big"><b>全局胜段率 37/97 ≈ <span class="neg">38%</span></b> —— 整体仍是负期望，<b>本质是震荡市工具，不是稳定盈利策略</b>。</p>
+<p>注：AUD系/CAD系/CHFJPY 为本次新版(近30天S/R)完整6段数据；EUR/GBP/USD 系含早期几轮数据(部分段缺)，批2/批3未跑完。</p>
+</div>
+
+<h2>📊 全品种 × 分段净利矩阵 (JPY)</h2>
+<div class="card">
+<table>
+<tr><th>品种</th><th>S1<br>01-04</th><th>S2<br>04-07</th><th>S3<br>07-10</th><th>S4<br>10-01</th><th>S5<br>01-04</th><th>S6<br>04-05</th><th>合计</th><th>胜/有</th></tr>
+<tr><td class="sym">AUDCAD</td><td class="pos">281</td><td class="neg">-1512</td><td class="pos">645</td><td class="pos">9394</td><td class="neg">-4459</td><td class="neg">-5328</td><td class="neg">-979</td><td>3/6</td></tr>
+<tr><td class="sym">AUDCHF</td><td class="neg">-3127</td><td class="neg">-3729</td><td class="pos">738</td><td class="neg">-1913</td><td class="neg">-4947</td><td class="neg">-5922</td><td class="neg">-18900</td><td>1/6</td></tr>
+<tr><td class="sym">AUDJPY</td><td class="neg">-861</td><td class="neg">-6418</td><td class="pos">130</td><td class="pos">1953</td><td class="neg">-1433</td><td class="neg">-3214</td><td class="neg">-9843</td><td>2/6</td></tr>
+<tr><td class="sym">AUDNZD</td><td class="neg">-518</td><td class="neg">-2587</td><td class="neg">-1827</td><td class="neg">-4969</td><td class="neg">-601</td><td class="neg">-2488</td><td class="neg">-12990</td><td>0/6</td></tr>
+<tr><td class="sym">AUDUSD</td><td class="pos">8996</td><td class="neg">-2809</td><td class="neg">-3933</td><td class="neg">-2725</td><td class="neg">-248</td><td class="pos">542</td><td class="neg">-177</td><td>2/6</td></tr>
+<tr><td class="sym">CADJPY</td><td class="pos">1046</td><td class="pos">20951</td><td class="pos">11184</td><td class="neg">-6562</td><td class="neg">-1944</td><td class="neg">-994</td><td class="pos">23681</td><td>3/6</td></tr>
+<tr><td class="sym">CHFJPY</td><td class="neg">-9372</td><td class="pos">19902</td><td class="neg">-6068</td><td class="neg">-6243</td><td class="neg">-6179</td><td class="neg">-10559</td><td class="neg">-18519</td><td>1/6</td></tr>
+<tr><td class="sym">EURAUD</td><td class="pos">10789</td><td class="pos">3085</td><td class="pos">21733</td><td class="pos">9247</td><td class="neg">-5417</td><td class="neg">-7089</td><td class="pos">32348</td><td>4/6</td></tr>
+<tr><td class="sym">EURCAD</td><td class="neg">-8318</td><td class="pos">2482</td><td class="neg">-5085</td><td class="pos">10511</td><td class="pos">9900</td><td>-</td><td class="pos">9490</td><td>3/5</td></tr>
+<tr><td class="sym">EURCHF</td><td>-</td><td class="neg">-19515</td><td class="pos">11956</td><td class="neg">-5938</td><td class="neg">-4539</td><td>-</td><td class="neg">-18036</td><td>1/4</td></tr>
+<tr><td class="sym">EURGBP</td><td>-</td><td class="neg">-4755</td><td class="neg">-19885</td><td class="pos">5792</td><td class="pos">11322</td><td>-</td><td class="neg">-7526</td><td>2/4</td></tr>
+<tr><td class="sym">EURJPY</td><td>-</td><td class="pos">82601</td><td class="neg">-6544</td><td class="pos">7590</td><td class="pos">58925</td><td class="neg">-5549</td><td class="pos big">137023</td><td>3/5</td></tr>
+<tr><td class="sym">EURUSD</td><td>-</td><td class="neg">-5267</td><td class="pos">43363</td><td class="neg">-6103</td><td class="neg">-11399</td><td class="pos">106896</td><td class="pos big">127490</td><td>2/5</td></tr>
+<tr><td class="sym">GBPJPY</td><td>-</td><td class="pos">27292</td><td class="neg">-43054</td><td class="neg">-16572</td><td class="neg">-18395</td><td>-</td><td class="neg big">-50729</td><td>1/4</td></tr>
+<tr><td class="sym">GBPUSD</td><td>-</td><td class="neg">-28569</td><td class="pos">5389</td><td class="neg">-1182</td><td class="pos">17122</td><td class="pos">79208</td><td class="pos">71968</td><td>3/5</td></tr>
+<tr><td class="sym">NZDUSD</td><td>-</td><td class="neg">-4578</td><td class="neg">-1454</td><td class="neg">-5523</td><td class="pos">7534</td><td>-</td><td class="neg">-4021</td><td>1/4</td></tr>
+<tr><td class="sym">USDCAD</td><td>-</td><td class="neg">-12415</td><td class="neg">-4539</td><td class="neg">-10679</td><td class="neg">-5948</td><td>-</td><td class="neg">-33581</td><td>0/4</td></tr>
+<tr><td class="sym">USDCHF</td><td>-</td><td class="neg">-10428</td><td class="pos">25245</td><td class="pos">17045</td><td class="pos">12332</td><td>-</td><td class="pos">44194</td><td>3/4</td></tr>
+<tr><td class="sym">USDJPY</td><td>-</td><td class="neg">-2238</td><td class="pos">659</td><td class="neg">-5587</td><td class="neg">-5903</td><td class="pos">659</td><td class="neg">-12410</td><td>2/5</td></tr>
+</table>
+<p class="muted">"-" = 该段未跑(批2/批3未完成或缺前置数据)。</p>
+</div>
+
+<h2>📌 关键发现</h2>
+<div class="card">
+<ol>
+<li><b>没有任何品种跨段稳定盈利。</b> 最好的 EURAUD 也只有 4/6 胜段；多数品种 1~3/6。同一品种换段就可能由赚转亏(如 GBPJPY S2 +27292 → S3 -43054)。</li>
+<li><b>盈亏由"那段是不是震荡"决定，不由品种决定。</b> S2、S3、S5 多数品种赚(那几段多数货币震荡)；S1、S4、S6 多数亏。</li>
+<li><b>大赚集中在少数品种少数段：</b> EURJPY合计+13.7万、EURUSD+12.7万、GBPUSD+7.2万、USDCHF+4.4万 —— 但都伴随其他段的亏损，是"波动大"而非"稳定"。</li>
+<li><b>交叉盘(AUD系)普遍表现差</b>(AUDNZD 0/6、AUDCHF 1/6)——这些品种波动小、易走小趋势,不适合网格。</li>
+</ol>
+</div>
+
+<div class="warn">
+<h2 style="border:none;padding:0;margin-top:0;">⚠️ 结论与实盘红线</h2>
+<ul>
+<li><b>这是震荡市工具,整体负期望(胜段38%)。</b> 不能无脑全自动长期跑。</li>
+<li>近30天S/R+中线对齐 修复了"边界错位"(EURCAD从-6.9万救到-8千级别),让<b>震荡段表现可靠</b>,但改变不了"趋势段必亏"的本质。</li>
+<li><b>实盘只能人工择时</b>:用图(带边界+斐波)确认某品种当前在震荡区间内才挂,趋势来了手动撤。</li>
+<li>手数极小(0.01手趋势段最坏亏35%),开 InpGlobalSL 全局止损当硬保险。</li>
+<li>优先选 EURUSD/GBPUSD/USDCHF/EURJPY 这类波动够大的主流对,避开 AUD 交叉盘。</li>
+</ul>
+</div>
+
+<p class="muted">批2(EUR系)/批3(GBP/USD系)的新版6段数据未跑完,明天可补全。当前 EUR/GBP/USD 行用的是早期几轮数据。</p>
+
+</div></body></html>

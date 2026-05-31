@@ -1,0 +1,73 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8">
+<title>EURCAD 触碰分布 — 两种定界做法对比</title>
+<style>
+body{font-family:"Microsoft YaHei",sans-serif;background:#f4f6f9;margin:0;padding:24px;color:#222;}
+.wrap{max-width:1000px;margin:0 auto;}
+h1{font-size:22px;border-bottom:3px solid #2b6cb0;padding-bottom:8px;}
+.card{background:#fff;border-radius:10px;padding:18px 22px;margin:16px 0;box-shadow:0 1px 4px rgba(0,0,0,.08);}
+.bar{display:flex;align-items:center;font-size:12px;height:16px;margin:1px 0;}
+.bar .price{width:70px;text-align:right;padding-right:8px;color:#555;font-variant-numeric:tabular-nums;}
+.bar .fill{height:13px;border-radius:2px;}
+.bar .cnt{padding-left:6px;color:#888;}
+.tag{display:inline-block;padding:1px 7px;border-radius:4px;color:#fff;font-size:11px;margin-left:8px;}
+.legend span{display:inline-block;margin-right:20px;font-size:13px;}
+table{border-collapse:collapse;width:100%;font-size:14px;margin-top:8px;}
+th,td{border:1px solid #dde3ea;padding:7px 10px;}th{background:#eef3f9;}
+.muted{color:#777;font-size:13px;}
+</style></head><body><div class="wrap">
+
+<h1>EURCAD 2025.04~07 — 触碰次数分布（真实回测数据）</h1>
+<p class="muted">横条 = 每个价位被 K 线触碰的次数（越长=价格在此停留/反复越多）。近3个月 H1 数据。</p>
+
+<div class="card">
+<!-- 直方图: 价位从高到低 -->
+<div id="hist"></div>
+</div>
+
+<div class="card">
+<h2 style="font-size:18px;color:#2b6cb0;">三个关键价位（图中标注）</h2>
+<table>
+<tr><th>价位</th><th>触碰次数</th><th>含义</th></tr>
+<tr><td><b>1.50342</b></td><td><b>161（全场最高）</b></td><td>价格停留最久处 = <b>真实重心</b>。但它在区间<b>底部</b>！</td></tr>
+<tr><td><b>1.56342</b></td><td>99（上半峰值）</td><td>上方密集区，曾算作阻力/上界</td></tr>
+<tr><td><b>1.55342 / 1.55142</b></td><td>67 / 61</td><td>价格后期（4-6月）真正活动的中枢带</td></tr>
+</table>
+</div>
+
+<div class="card">
+<h2 style="font-size:18px;color:#d23030;">⚠️ 关键发现：触碰最高 ≠ 后期重心</h2>
+<p><b>触碰全场最高的价位是 1.50342（161次），但它在区间最底部！</b>这是因为近3个月里 <b>1-3月价格在 1.50 附近待了很久</b>（贡献了大量触碰），而 <b>4-6月价格上移到 1.55 附近</b>。</p>
+<p>所以：</p>
+<ul>
+<li><b>做法A（中线=触碰最高）</b>：中线会落在 <b>1.503</b> —— 比之前的 1.525 还要低！因为历史低位停留太久，把"重心"拉到了底部。<span class="tag" style="background:#d23030;">更糟</span></li>
+<li><b>之前的几何中点法</b>：中线 1.525，已经偏低。</li>
+<li><b>最高最低中点法（上次+59150那个）</b>：中线 1.550 —— 反而最接近 4-6月真实活动区。<span class="tag" style="background:#1a8a3a;">最好</span></li>
+</ul>
+<p><b>结论：用"触碰最高"当中线会被历史停留区带偏，反而不如简单的"最高最低中点"。</b>你的直觉在"震荡均匀"时对，但这段行情<b>前后中枢搬家了</b>，触碰分布是双峰（1.50一个峰、1.56一个峰），最高峰落在过时的低位。</p>
+</div>
+
+</div>
+
+<script>
+const data = [
+[1.58342,5],[1.58142,5],[1.57942,4],[1.57742,6],[1.57542,19],[1.57342,23],[1.57142,15],[1.56942,16],[1.56742,33],
+[1.56542,78],[1.56342,99],[1.56142,81],[1.55942,59],[1.55742,34],[1.55542,42],[1.55342,67],[1.55142,61],[1.54942,35],
+[1.54742,61],[1.54542,73],[1.54342,49],[1.54142,28],[1.53942,33],[1.53742,34],[1.53542,19],[1.53342,10],[1.53142,13],
+[1.52942,7],[1.52742,6],[1.52542,2],[1.52342,5],[1.52142,9],[1.51942,17],[1.51742,11],[1.51542,6],[1.51342,6],
+[1.51142,19],[1.50942,30],[1.50742,51],[1.50542,87],[1.50342,161],[1.50142,138],[1.49942,74]
+];
+const max=161;
+let html="";
+for(const [price,cnt] of data){
+  let color="#9bb7d4";
+  let tag="";
+  if(price===1.50342){color="#d23030";tag='<span class="tag" style="background:#d23030;">触碰最高=做法A中线(偏低!)</span>';}
+  else if(price===1.55142||price===1.55342){color="#e0a800";}
+  else if(price===1.56342){color="#7a5fb0";tag='<span class="tag" style="background:#7a5fb0;">上方峰值</span>';}
+  const w=(cnt/max*620)|0;
+  html+=`<div class="bar"><span class="price">${price.toFixed(4)}</span><span class="fill" style="width:${w}px;background:${color};"></span><span class="cnt">${cnt}${tag}</span></div>`;
+}
+// 标注最高最低中点法的中线 1.550
+document.getElementById("hist").innerHTML = html;
+</script>
+</body></html>

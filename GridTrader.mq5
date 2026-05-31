@@ -26,8 +26,8 @@ input bool     InpEnableSell       = true;      // 允许上半做空
 input group           "=== 网格区间 ==="
 // 上下界填 0 = 启动时按所选算法自动计算; 填具体价格 = 手动覆盖。
 // 仅 OnInit 算一次, 之后固定。
-input double   InpUpperPrice       = 159.5;     // 网格上边界价 (0=自动)
-input double   InpLowerPrice       = 157.5;     // 网格下边界价 (0=自动)
+input double   InpUpperPrice       = 0;         // 网格上边界价 (0=自动)
+input double   InpLowerPrice       = 0;         // 网格下边界价 (0=自动)
 
 enum ENUM_BOUNDS_MODE
   {
@@ -39,15 +39,17 @@ enum ENUM_BOUNDS_MODE
    BOUNDS_DAILY_SWING,       // 触碰次数法 S/R 做上下界
    BOUNDS_FIBO_TOUCH         // 斐波回撤位 + 触碰次数 双确认 做上下界
   };
-input ENUM_BOUNDS_MODE InpBoundsMode = BOUNDS_DAILY_SWING; // [手段1] 自动定界算法
+input ENUM_BOUNDS_MODE InpBoundsMode = BOUNDS_FIBO_TOUCH; // [手段1] 自动定界算法(斐波+触碰)
 input int      InpAutoLookback     = 100;       // 自动(唐奇安): 回看 K 线根数
 input int      InpATRPeriod        = 14;        // 自动(ATR模式): ATR 周期
 input double   InpATRMult          = 10.0;      // 自动(ATR模式): k 倍数
 input double   InpHalfRangePips    = 150.0;     // 自动(CENTER_PIPS模式): 中线上下各展开 pips
 input ENUM_TIMEFRAMES InpSwingTF   = PERIOD_H1; // S/R: 用哪个周期找密集价位
-input int      InpSRMonths          = 3;        // S/R: 回看月数(按时间, 默认近3个月)
+input int      InpSRDays            = 30;       // S/R: 回看天数(贴近当前, 默认近30天 实测最优)
 input double   InpSRMinDistPips    = 80.0;      // S/R: 边界距现价的最小距离(pips, 避免贴中枢)
 input double   InpFiboTolPips       = 30.0;     // 斐波模式: 触碰峰值距斐波位多近才算"双确认"(pips)
+input bool     InpCenterOnMid      = true;      // 中线对齐近期真实中枢(而非上下界几何中点), 防多空失衡
+input int      InpCenterLookback   = 240;       // 真实中枢: 用近 N 根 K 线算
 input int      InpSwingStrength    = 5;         // (保留, 未用)
 input double   InpBoundsShrinkPct  = 0.0;       // [手段2] 边界向内收缩百分比(0~40, 0=不收缩)
 
@@ -67,6 +69,12 @@ enum ENUM_BREAKOUT_MODE
   };
 input ENUM_BREAKOUT_MODE InpBreakoutMode = BREAKOUT_TRAIL_SL; // 超界处理方式(默认:跟踪止损)
 input double   InpTrailDistPips    = 50.0;      // 跟踪止损距离 (pips, 仅 TRAIL_SL 模式)
+
+input group           "=== 区间失效保护 [手段6] (中枢偏移检测) ==="
+// 定期重算"当前中枢"(近 N 根中位价), 若偏离原中线超过阈值 -> 判定区间失效 ->
+// 停止开新单, 旧单交给止盈/跟踪止损了结; 中枢回到阈值内则恢复。
+input int      InpDriftLookback    = 240;       // 当前中枢: 用近 N 根 K 线算(240≈10天H1)
+input double   InpDriftTolPct      = 50.0;      // 中枢偏离原中线超过"半区间宽×此%"判失效(0=关闭)
 
 input group           "=== 全局熔断 [手段3] (账户货币, 0=关闭) ==="
 input double   InpGlobalTP         = 0.0;       // 总浮盈达此值 -> 全平 (0=关闭)
@@ -101,6 +109,8 @@ int    g_digits = 0;
 double g_center = 0.0;   // 中线 = (上界+下界)/2
 double g_upper  = 0.0;   // 网格上边界
 double g_lower  = 0.0;   // 网格下边界
+double g_fibo[5];        // 斐波回撤位(23.6/38.2/50/61.8/78.6%, 用近3月波段算, 供画图)
+bool   g_fiboValid = false;
 
 // 冷却: 记录某方向最后一次开单的网格线价格。
 // 价格必须真正离开该线(超过半格)后, 才允许在该线重新开单,
@@ -116,6 +126,12 @@ bool   g_halted    = false;          // 全局止损熔断后停机
 
 bool   g_locked       = false;       // 锁仓状态(超界对冲中)
 ulong  g_hedgeTicket  = 0;           // 对冲锁仓单的 ticket
+
+// 区间失效保护
+bool   g_rangeBroken  = false;       // 区间已失效, 暂停开新单
+int    g_consecSL     = 0;           // 跟踪止损连续触发计数
+int    g_lastClosed   = 0;           // 上次检测时逆势持仓数(发现"减少=有单被止损")
+bool   g_outFlag      = false;       // 当前是否处于超界状态(用于建立计数基准)
 
 // 锁仓诊断统计
 int    g_lockCount    = 0;           // 锁仓次数
@@ -169,6 +185,24 @@ int OnInit()
 
    g_center = (g_upper + g_lower) / 2.0;
 
+   // 中线对齐近期真实中枢: 避免中线被偏移的边界拖偏导致多空失衡
+   // 仅在自动定界时生效(手动填了边界则尊重用户的边界, 不动)
+   bool autoMode = (InpUpperPrice <= 0 || InpLowerPrice <= 0);
+   if(InpCenterOnMid && autoMode && InpCenterLookback >= 20)
+     {
+      double dh[], dl[];
+      if(CopyHigh(_Symbol, _Period, 1, InpCenterLookback, dh) >= InpCenterLookback &&
+         CopyLow (_Symbol, _Period, 1, InpCenterLookback, dl) >= InpCenterLookback)
+        {
+         double realMid = (dh[ArrayMaximum(dh)] + dl[ArrayMinimum(dl)]) / 2.0;
+         double halfW   = (g_upper - g_lower) / 2.0;   // 保持原区间宽度
+         g_center = realMid;
+         g_upper  = realMid + halfW;
+         g_lower  = realMid - halfW;
+         PrintFormat("中线对齐真实中枢: 中线->%.5f 上界->%.5f 下界->%.5f", g_center, g_upper, g_lower);
+        }
+     }
+
    DrawLines();
 
    PrintFormat("GridTrader v2 启动. 上界=%.5f 中线=%.5f 下界=%.5f grid=%.5f (%s)",
@@ -180,9 +214,7 @@ int OnInit()
 //+------------------------------------------------------------------+
 void OnDeinit(const int reason)
   {
-   ObjectDelete(0, "GT_upper");
-   ObjectDelete(0, "GT_center");
-   ObjectDelete(0, "GT_lower");
+   ObjectsDeleteAll(0, "GT_");   // 删除所有 GT_ 前缀对象(边界/中线/斐波/网格线)
    if(g_atrHandle != INVALID_HANDLE) IndicatorRelease(g_atrHandle);
    if(g_adxHandle != INVALID_HANDLE) IndicatorRelease(g_adxHandle);
    if(g_bbHandle  != INVALID_HANDLE) IndicatorRelease(g_bbHandle);
@@ -268,25 +300,26 @@ bool NearAnyFibo(const double price, const double &fibo[], const double tol)
 //+------------------------------------------------------------------+
 bool CalcDailySwing(double &hi, double &lo)
   {
-   if(InpSRMonths < 1)
+   if(InpSRDays < 3)
      {
-      Print("参数非法: S/R 回看月数必须>=1");
+      Print("参数非法: S/R 回看天数必须>=3");
       return(false);
      }
 
-   // 按"时间范围"取数: 从 (当前K线时间 - N个月) 到 上一根已收盘K线
-   datetime tEnd   = iTime(_Symbol, InpSwingTF, 1);              // 上一根已收盘
-   datetime tStart = tEnd - (datetime)InpSRMonths * 30 * 24 * 3600; // N个月前(按30天/月)
+   // 按"时间范围"取数: 从 (当前K线时间 - N天) 到 上一根已收盘K线
+   // 贴近当前, 避免把几个月前的旧价位区间纳入(那会导致边界与当前行情错位)
+   datetime tEnd   = iTime(_Symbol, InpSwingTF, 1);          // 上一根已收盘
+   datetime tStart = tEnd - (datetime)InpSRDays * 24 * 3600; // N 天前
 
    double dh[], dl[];
    int gotH = CopyHigh(_Symbol, InpSwingTF, tStart, tEnd, dh);
    int gotL = CopyLow (_Symbol, InpSwingTF, tStart, tEnd, dl);
    if(gotH < 20 || gotL < 20 || gotH != gotL)
      {
-      PrintFormat("S/R: 近%d个月历史不足(取到%d根), 请补历史数据或减小月数", InpSRMonths, gotH);
+      PrintFormat("S/R: 近%d天历史不足(取到%d根), 请增大天数或补数据", InpSRDays, gotH);
       return(false);
      }
-   PrintFormat("S/R: 取近%d个月数据, 共%d根%s K线", InpSRMonths, gotH, EnumToString(InpSwingTF));
+   PrintFormat("S/R: 取近%d天数据, 共%d根%s K线", InpSRDays, gotH, EnumToString(InpSwingTF));
 
    // 价格范围
    double rangeHi = dh[ArrayMaximum(dh)];
@@ -324,12 +357,12 @@ bool CalcDailySwing(double &hi, double &lo)
 
    bool useFibo = (InpBoundsMode == BOUNDS_FIBO_TOUCH);
    double fibo[];
-   if(useFibo)
-     {
-      double ratios[] = {0.236, 0.382, 0.5, 0.618, 0.786};
-      ArrayResize(fibo, 5);
-      for(int r = 0; r < 5; r++) fibo[r] = rangeHi - (rangeHi - rangeLo) * ratios[r];
-     }
+   double ratios[] = {0.236, 0.382, 0.5, 0.618, 0.786};
+   ArrayResize(fibo, 5);
+   for(int r = 0; r < 5; r++) fibo[r] = rangeHi - (rangeHi - rangeLo) * ratios[r];
+   // 存全局供画图(任何模式都算, 供 DrawLines 显示斐波线)
+   for(int r = 0; r < 5; r++) g_fibo[r] = fibo[r];
+   g_fiboValid = true;
    double fiboTol = InpFiboTolPips * g_pip;
 
    //--- 1) 纯触碰: 现价上/下方最近距离外, 触碰最高的局部峰值 ---
@@ -484,7 +517,46 @@ void DrawLines()
    ObjectSetInteger(0, "GT_lower", OBJPROP_SELECTABLE, false);
    ObjectSetString (0, "GT_lower", OBJPROP_TEXT,      "下界");
 
+   // 斐波回撤位 (紫色虚线, 5 条); 手动边界时 g_fibo 未算 -> 用上下界现算
+   if(!g_fiboValid)
+     {
+      double ratios[] = {0.236, 0.382, 0.5, 0.618, 0.786};
+      for(int r = 0; r < 5; r++) g_fibo[r] = g_upper - (g_upper - g_lower) * ratios[r];
+     }
+   string fibName[5] = {"23.6%","38.2%","50.0%","61.8%","78.6%"};
+   for(int i = 0; i < 5; i++)
+     {
+      string nm = "GT_fib" + IntegerToString(i);
+      ObjectCreate(0, nm, OBJ_HLINE, 0, 0, g_fibo[i]);
+      ObjectSetInteger(0, nm, OBJPROP_COLOR,      C'150,80,200');  // 紫
+      ObjectSetInteger(0, nm, OBJPROP_STYLE,      STYLE_DOT);
+      ObjectSetInteger(0, nm, OBJPROP_WIDTH,      1);
+      ObjectSetInteger(0, nm, OBJPROP_SELECTABLE, false);
+      ObjectSetInteger(0, nm, OBJPROP_BACK,       true);
+      ObjectSetString (0, nm, OBJPROP_TEXT,       "Fib " + fibName[i]);
+     }
+
+   // 网格线 (淡灰点线): 从中线±一格铺到上下界, 直观看网格密度
+   double grid = InpGridSizePips * g_pip;
+   int gi = 0;
+   for(double line = g_center + grid; line <= g_upper + grid*0.5 && gi < 200; line += grid)
+     { DrawGridLine("GT_g_u" + IntegerToString(gi), line); gi++; }
+   gi = 0;
+   for(double line = g_center - grid; line >= g_lower - grid*0.5 && gi < 200; line -= grid)
+     { DrawGridLine("GT_g_d" + IntegerToString(gi), line); gi++; }
+
    ChartRedraw(0);
+  }
+
+//+------------------------------------------------------------------+
+void DrawGridLine(const string nm, const double price)
+  {
+   ObjectCreate(0, nm, OBJ_HLINE, 0, 0, price);
+   ObjectSetInteger(0, nm, OBJPROP_COLOR,      C'200,200,210');
+   ObjectSetInteger(0, nm, OBJPROP_STYLE,      STYLE_DOT);
+   ObjectSetInteger(0, nm, OBJPROP_WIDTH,      1);
+   ObjectSetInteger(0, nm, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, nm, OBJPROP_BACK,       true);
   }
 
 //+------------------------------------------------------------------+
@@ -539,29 +611,55 @@ void OnTick()
       return;
      }
 
+   // [手段6] 中枢偏移检测(每根新 bar 检测一次)
+   if(InpDriftTolPct > 0)
+     {
+      static datetime driftBar = 0;
+      datetime nb = iTime(_Symbol, _Period, 0);
+      if(nb != driftBar)
+        {
+         driftBar = nb;
+         double dh[], dl[];
+         if(CopyHigh(_Symbol, _Period, 1, InpDriftLookback, dh) >= InpDriftLookback &&
+            CopyLow (_Symbol, _Period, 1, InpDriftLookback, dl) >= InpDriftLookback)
+           {
+            double curMid  = (dh[ArrayMaximum(dh)] + dl[ArrayMinimum(dl)]) / 2.0; // 当前中枢
+            double halfW   = (g_upper - g_lower) / 2.0;
+            double tol     = halfW * (InpDriftTolPct / 100.0);
+            bool   drifted = (MathAbs(curMid - g_center) > tol);
+            if(drifted && !g_rangeBroken)
+              { g_rangeBroken = true; PrintFormat("区间失效: 当前中枢%.5f 偏离原中线%.5f 超阈(%.5f), 暂停开单", curMid, g_center, tol); }
+            else if(!drifted && g_rangeBroken)
+              { g_rangeBroken = false; Print("中枢回到阈值内, 恢复开单"); }
+           }
+        }
+     }
+
    // 3) 超界处理
    if(outOfRange)
      {
       if(InpBreakoutMode == BREAKOUT_CLOSE_ALL)
          CloseAll();
       else if(InpBreakoutMode == BREAKOUT_HEDGE_LOCK)
-         Lock();          // 对冲净敞口锁仓
+         Lock();
       else if(InpBreakoutMode == BREAKOUT_TRAIL_SL)
-         UpdateTrailingSL(close1 > g_upper);  // 给逆势单挂/推进跟踪止损
-      // PAUSE_ONLY: 什么都不做, 仅靠下面的 return 暂停开单
+         UpdateTrailingSL(close1 > g_upper);
       return;
      }
    else if(InpBreakoutMode == BREAKOUT_TRAIL_SL)
      {
-      // 回到区间内: 撤销所有跟踪止损, 让单子重新交给网格止盈
-      ClearAllSL();
+      ClearAllSL();      // 回区间: 撤销跟踪止损
      }
 
-   // 4) [手段5] 趋势过滤: 明显趋势时暂停开新单(已有单的止盈/跟踪止损不受影响)
+   // 4) 区间失效中: 暂停开新单(旧单的止盈/跟踪止损照常)
+   if(g_rangeBroken)
+      return;
+
+   // 5) [手段5] 趋势过滤
    if(InpTrendFilter != TREND_FILTER_OFF && IsTrending())
       return;
 
-   // 5) 区间内开网格单
+   // 6) 区间内开网格单
    TradeGrid(grid);
   }
 
