@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GridTrader 区间网格策略报告</title>
+<style>
+  body { font-family: "Microsoft YaHei","Segoe UI",sans-serif; background:#f4f6f9; color:#222; margin:0; padding:0; line-height:1.7; }
+  .wrap { max-width:980px; margin:0 auto; padding:28px 24px 60px; }
+  h1 { font-size:26px; border-bottom:3px solid #2b6cb0; padding-bottom:10px; }
+  h2 { font-size:20px; color:#2b6cb0; margin-top:34px; border-left:5px solid #2b6cb0; padding-left:10px; }
+  h3 { font-size:16px; color:#444; margin-top:22px; }
+  .card { background:#fff; border-radius:10px; padding:18px 22px; margin:16px 0; box-shadow:0 1px 4px rgba(0,0,0,.08); }
+  table { border-collapse:collapse; width:100%; margin:12px 0; font-size:14px; }
+  th,td { border:1px solid #dde3ea; padding:8px 10px; text-align:left; }
+  th { background:#eef3f9; }
+  .pos { color:#1a8a3a; font-weight:bold; }
+  .neg { color:#d23030; font-weight:bold; }
+  .warn { background:#fff7e6; border-left:5px solid #f0a020; padding:12px 16px; border-radius:6px; margin:14px 0; }
+  .danger { background:#fdecea; border-left:5px solid #d23030; padding:12px 16px; border-radius:6px; margin:14px 0; }
+  code { background:#eef1f4; padding:2px 6px; border-radius:4px; font-size:13px; }
+  .legend span { display:inline-block; margin-right:18px; font-size:13px; }
+  .swatch { display:inline-block; width:24px; height:0; border-top-width:3px; vertical-align:middle; margin-right:5px; }
+  ul { margin:8px 0; }
+  .muted { color:#777; font-size:13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>GridTrader — 区间双向网格策略报告</h1>
+<p class="muted">EA 文件：GridTrader.mq5 ｜ 平台：MT5（对冲账户）｜ 报告生成于回测复盘后</p>
+
+<div class="card">
+<h2>一句话概括</h2>
+<p>在一段<strong>震荡区间</strong>内，上半区做空、下半区做多，价格每触碰一条网格线就开一单，往中线方向走一格就止盈；价格冲出区间时，给逆势单挂<strong>跟踪止损</strong>认亏离场；区间上下界由<strong>近3个月的支撑/阻力 + 斐波那契回撤位</strong>自动确定。</p>
+</div>
+
+<h2>📈 交易示意图（含支撑阻力 + 斐波那契）</h2>
+<p>下图以一组真实回测边界为例（EURJPY，区间 161.91 ~ 169.86）。蓝线是价格走势示意，水平线是各类关键价位。</p>
+
+<div class="card">
+<div class="legend">
+  <span><i class="swatch" style="border-color:#d23030;"></i>阻力（上界）</span>
+  <span><i class="swatch" style="border-color:#e0a800;"></i>中线</span>
+  <span><i class="swatch" style="border-color:#1a8a3a;"></i>支撑（下界）</span>
+  <span><i class="swatch" style="border-color:#9b59b6;border-top-style:dashed;"></i>斐波回撤位</span>
+  <span><i class="swatch" style="border-color:#aab;border-top-style:dotted;"></i>网格线</span>
+</div>
+
+<!-- SVG 交易示意图 -->
+<svg viewBox="0 0 900 460" width="100%" style="background:#fcfcfd;border:1px solid #e3e8ef;border-radius:8px;">
+  <!-- 价格轴范围 161.5 ~ 170.2 映射到 y: 430(底) ~ 30(顶) -->
+  <!-- 辅助函数(手算): y = 430 - (price-161.5)/(170.2-161.5)*400 -->
+
+  <!-- 网格线(细灰点线), 每0.4日元一条, 从162.5到169.8 -->
+  <line x1="70" y1="338.0" x2="830" y2="338.0" stroke="#bbc" stroke-width="1" stroke-dasharray="2,3"/>
+  <line x1="70" y1="319.6" x2="830" y2="319.6" stroke="#bbc" stroke-width="1" stroke-dasharray="2,3"/>
+  <line x1="70" y1="301.1" x2="830" y2="301.1" stroke="#bbc" stroke-width="1" stroke-dasharray="2,3"/>
+  <line x1="70" y1="282.7" x2="830" y2="282.7" stroke="#bbc" stroke-width="1" stroke-dasharray="2,3"/>
+  <line x1="70" y1="245.9" x2="830" y2="245.9" stroke="#bbc" stroke-width="1" stroke-dasharray="2,3"/>
+  <line x1="70" y1="227.4" x2="830" y2="227.4" stroke="#bbc" stroke-width="1" stroke-dasharray="2,3"/>
+  <line x1="70" y1="190.6" x2="830" y2="190.6" stroke="#bbc" stroke-width="1" stroke-dasharray="2,3"/>
+  <line x1="70" y1="172.2" x2="830" y2="172.2" stroke="#bbc" stroke-width="1" stroke-dasharray="2,3"/>
+  <line x1="70" y1="135.4" x2="830" y2="135.4" stroke="#bbc" stroke-width="1" stroke-dasharray="2,3"/>
+
+  <!-- 斐波回撤位(紫色虚线): 从高169.86到低161.91, 38.2%/50%/61.8% -->
+  <!-- 61.8%回撤=169.86-(7.95*0.618)=164.95 -->
+  <line x1="70" y1="266.7" x2="830" y2="266.7" stroke="#9b59b6" stroke-width="1.5" stroke-dasharray="7,4"/>
+  <text x="836" y="270" font-size="11" fill="#9b59b6">Fib 61.8% 164.95</text>
+  <!-- 50%回撤=165.89 -->
+  <line x1="70" y1="223.5" x2="830" y2="223.5" stroke="#9b59b6" stroke-width="1.5" stroke-dasharray="7,4"/>
+  <text x="836" y="227" font-size="11" fill="#9b59b6">Fib 50% 165.89</text>
+  <!-- 38.2%回撤=166.82 -->
+  <line x1="70" y1="180.7" x2="830" y2="180.7" stroke="#9b59b6" stroke-width="1.5" stroke-dasharray="7,4"/>
+  <text x="836" y="184" font-size="11" fill="#9b59b6">Fib 38.2% 166.82</text>
+
+  <!-- 阻力/上界 169.86 -> y=49.6 -->
+  <line x1="70" y1="49.6" x2="830" y2="49.6" stroke="#d23030" stroke-width="2.5"/>
+  <text x="74" y="44" font-size="12" fill="#d23030" font-weight="bold">阻力 / 上界 169.86 （上半区→做空）</text>
+
+  <!-- 中线 165.885 -> y=223.6(≈和50%重合, 这里画粗黄) -->
+  <line x1="70" y1="223.6" x2="830" y2="223.6" stroke="#e0a800" stroke-width="2.5"/>
+  <text x="74" y="218" font-size="12" fill="#b8860b" font-weight="bold">中线 165.89</text>
+
+  <!-- 支撑/下界(斐波确认 162.51) -> y=384.4 -->
+  <line x1="70" y1="384.4" x2="830" y2="384.4" stroke="#1a8a3a" stroke-width="2.5"/>
+  <text x="74" y="402" font-size="12" fill="#1a8a3a" font-weight="bold">支撑 / 下界 162.51 （下半区→做多）</text>
+
+  <!-- 价格走势示意(蓝色折线, 在区间内震荡) -->
+  <polyline fill="none" stroke="#2b6cb0" stroke-width="2.2"
+    points="70,223 120,180 165,150 210,200 255,250 300,300 345,330 390,290 435,240 480,200 525,170 570,210 615,260 660,310 705,355 750,300 795,250 830,215"/>
+
+  <!-- 开仓标记: 上半做空(红下箭) -->
+  <text x="160" y="146" font-size="16" fill="#d23030">▼</text>
+  <text x="520" y="166" font-size="16" fill="#d23030">▼</text>
+  <!-- 下半做多(绿上箭) -->
+  <text x="296" y="312" font-size="16" fill="#1a8a3a">▲</text>
+  <text x="700" y="367" font-size="16" fill="#1a8a3a">▲</text>
+
+  <!-- 轴标签 -->
+  <text x="20" y="53" font-size="11" fill="#888">169.86</text>
+  <text x="20" y="227" font-size="11" fill="#888">165.89</text>
+  <text x="20" y="388" font-size="11" fill="#888">162.51</text>
+  <text x="430" y="452" font-size="12" fill="#666">时间 →</text>
+</svg>
+<p class="muted">说明：阻力/支撑由"近3个月触碰次数最多的价位"确定，并用斐波回撤位（38.2/50/61.8%）做<strong>保守双确认</strong>——斐波只会让区间收窄、不会撑宽。中线 = (上界+下界)/2，自动把区间分成"上半做空、下半做多"两部分。</p>
+</div>
+
+<h2>🔧 完整交易逻辑</h2>
+<div class="card">
+<h3>1. 确定区间（自动定界）</h3>
+<ul>
+<li>读取<strong>近 3 个月</strong>的 H1 K 线。</li>
+<li>把价格范围切成小格，统计每个价位被触碰的次数 → 找出"价格反复停留/反转"的密集价位作为<strong>支撑、阻力</strong>。</li>
+<li>用<strong>斐波那契回撤位</strong>（从近3月高点到低点的 38.2/50/61.8%）做双确认：若某条斐波位更靠内，则把边界收窄到它，<strong>绝不撑宽</strong>。</li>
+<li>边界距现价至少 80 pips，避免贴着中枢开单。</li>
+</ul>
+
+<h3>2. 区间内网格交易</h3>
+<ul>
+<li>中线以上每隔一个网格间距挂一条线 → 价格触碰就<strong>做空</strong>；中线以下 → <strong>做多</strong>。</li>
+<li>每单往中线方向走一个网格（止盈幅度）即<strong>单笔止盈</strong>落袋。</li>
+<li>同一条网格线开单后需价格离开再回来才重开（冷却），避免重复下单。</li>
+</ul>
+
+<h3>3. 冲出区间（跟踪止损）</h3>
+<ul>
+<li>价格收盘冲破上/下界 → 给<strong>逆势的浮亏单</strong>挂跟踪止损：趋势继续走就认亏离场（亏损封顶），价格回到区间就撤销止损、交回网格止盈回血。</li>
+<li>这是经测试<strong>最优的超界处理方式</strong>（优于"全平"和"对冲锁仓"）。</li>
+</ul>
+</div>
+
+<h2>⚙️ 当前默认参数</h2>
+<div class="card">
+<table>
+<tr><th>参数</th><th>值</th><th>含义</th></tr>
+<tr><td><code>InpBoundsMode</code></td><td>斐波+触碰双确认</td><td>自动定界算法</td></tr>
+<tr><td><code>InpSRMonths</code></td><td>3</td><td>S/R 回看近 3 个月</td></tr>
+<tr><td><code>InpGridSizePips</code></td><td>20</td><td>网格间距</td></tr>
+<tr><td><code>InpTakeProfitPips</code></td><td>30</td><td>单笔止盈</td></tr>
+<tr><td><code>InpBreakoutMode</code></td><td>跟踪止损</td><td>超界处理方式</td></tr>
+<tr><td><code>InpTrailDistPips</code></td><td>50</td><td>跟踪止损距离</td></tr>
+<tr><td><code>InpTrendFilter</code></td><td>关闭</td><td>趋势过滤器（实测负优化，已关）</td></tr>
+<tr><td><code>InpMaxOrdersPerSide</code></td><td>20</td><td>每方向最大单数（刹车）</td></tr>
+</table>
+</div>
+
+<h2>📊 回测验证摘要</h2>
+<div class="card">
+<p>主流货币、2025.07~2026.04、初始 20 万 JPY：</p>
+<table>
+<tr><th>品种</th><th>净利(JPY)</th><th>最大回撤</th></tr>
+<tr><td>EURUSD</td><td class="pos">+106,896</td><td>8.8%</td></tr>
+<tr><td>GBPUSD</td><td class="pos">+79,208</td><td>13.9%</td></tr>
+<tr><td>AUDUSD</td><td class="pos">+26,556</td><td>4.3%</td></tr>
+<tr><td>USDJPY</td><td>+659</td><td>2.0%</td></tr>
+<tr><td>EURJPY</td><td class="neg">−5,549</td><td>4.9%</td></tr>
+</table>
+<p class="muted">注：这是震荡偏多的时段表现。全品种全时段（76次扫描）只有 37% 段盈利。</p>
+</div>
+
+<div class="danger">
+<strong>⚠️ 风险红线（务必读）</strong>
+<ul>
+<li><strong>这是震荡市工具，不是稳定正期望策略。</strong> 全品种全时段扫描显示整体偏负——网格在震荡里赚小钱，在单边趋势里亏大钱。</li>
+<li>之前的"+50%"等亮眼结果是<strong>幸存者偏差</strong>（恰好选中震荡品种/时段）。</li>
+<li>无单笔硬止损，靠"跟踪止损 + 每方向最大单数"控制；单边大行情仍可能大幅回撤。</li>
+<li>务必先<strong>模拟账户</strong>验证；实盘建议人工判断品种进入震荡区间后再挂、趋势来了手动撤。</li>
+</ul>
+</div>
+
+<div class="warn">
+<strong>已验证无效/危险的方向（避免重走弯路）：</strong>
+<ul>
+<li><strong>对冲锁仓</strong>：对冲单系统性高买低卖，几乎不赚（实测净利从6万降到0.3万）。</li>
+<li><strong>趋势过滤器（ADX，任何周期）</strong>：与跟踪止损功能重叠 + 指标滞后误杀，是负优化。</li>
+<li><strong>激进斐波</strong>：找不到合格位时退化使区间暴宽，曾致 USDJPY −7.5万、回撤40%。已改保守版修复。</li>
+</ul>
+</div>
+
+</div>
+</body>
+</html>
