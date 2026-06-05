@@ -34,11 +34,12 @@ input double   InpGridSizePips     = 20.0;      // 网格间距 (pips)
 input double   InpLots             = 0.01;      // 每单手数
 input int      InpMaxOrdersPerSide = 20;        // 每方向最大单数 (刹车)
 
-input group           "=== 总体止盈 ==="
-// 所有持仓的总浮盈(含库存费/手续费)达到此金额 -> 一起全平, 然后重新开网格。
+input group           "=== 方向总体止盈 ==="
+// 买单组、卖单组各自独立结算: 某一方向所有单合计浮盈(含库存费/手续费)达到此金额
+// -> 只平掉该方向全部单(另一方向不动), 之后该方向重新铺网格。买卖共用这一个阈值。
 // 单位 = 账户货币。0 = 关闭(则无任何止盈出口, 只剩超界处理, 极危险!)。
-// 注意: 本版已去掉单笔止盈, 总体止盈是唯一主动止盈出口, 务必设合理值。
-input double   InpGlobalTP         = 0.0;       // 总浮盈达此值全平 (账户货币, 0=关闭)
+// 注意: 本版已去掉单笔止盈, 方向总体止盈是唯一主动止盈出口, 务必设合理值。
+input double   InpGlobalTP         = 0.0;       // 单方向总浮盈达此值平掉该方向 (账户货币, 0=关闭)
 
 input group           "=== 超界处理 ==="
 // 三种越界处理动作三选一(均用上一根已收盘 K 线判断, 避免插针误触发):
@@ -329,16 +330,28 @@ void OnTick()
    if(HandleBreakout())
       return;
 
-   // 1) 总体止盈: 所有持仓总浮盈达标 -> 全平, 本 tick 不再开单(下一轮重新铺网格)
+   // 1) 方向总体止盈: 买组/卖组各自结算, 哪组浮盈达标只平哪组(另一组不动), 本 tick 不再开单
    if(InpGlobalTP > 0)
      {
-      double pnl = TotalFloatingPnL();
-      if(pnl >= InpGlobalTP)
+      bool closedAny = false;
+
+      double buyPnl = TotalFloatingPnLByType(POSITION_TYPE_BUY);
+      if(CountSide(POSITION_TYPE_BUY) > 0 && buyPnl >= InpGlobalTP)
         {
-         PrintFormat("总体止盈触发: 总浮盈 %.2f >= %.2f, 全平", pnl, InpGlobalTP);
-         CloseAll();
-         return;
+         PrintFormat("买组止盈触发: 买单总浮盈 %.2f >= %.2f, 平掉所有买单", buyPnl, InpGlobalTP);
+         CloseSide(POSITION_TYPE_BUY);
+         closedAny = true;
         }
+
+      double sellPnl = TotalFloatingPnLByType(POSITION_TYPE_SELL);
+      if(CountSide(POSITION_TYPE_SELL) > 0 && sellPnl >= InpGlobalTP)
+        {
+         PrintFormat("卖组止盈触发: 卖单总浮盈 %.2f >= %.2f, 平掉所有卖单", sellPnl, InpGlobalTP);
+         CloseSide(POSITION_TYPE_SELL);
+         closedAny = true;
+        }
+
+      if(closedAny) return;   // 本 tick 已平仓, 下一轮重新铺该方向网格
      }
 
    // 2) 区间内开网格单
@@ -482,7 +495,6 @@ bool HandleBreakout()
       g_locked = true;
       PrintFormat("超界对冲锁仓: 上一根收盘 %.*f 超出区间 [%.*f, %.*f]",
                   g_digits, close1, g_digits, g_lower, g_digits, g_upper);
-      DrawVLine(C'150,80,200');   // 锁仓: 紫色竖线
       return(true);
      }
    else if(backInside && g_locked)
@@ -618,16 +630,17 @@ void TradeGrid(const double grid)
   }
 
 //+------------------------------------------------------------------+
-//| 本 symbol+magic 所有持仓的总浮动盈亏(含库存费/手续费)            |
+//| 某方向(买/卖)本 symbol+magic 持仓的总浮动盈亏(含库存费/手续费)   |
 //+------------------------------------------------------------------+
-double TotalFloatingPnL()
+double TotalFloatingPnLByType(const ENUM_POSITION_TYPE type)
   {
    double total = 0.0;
    for(int i = PositionsTotal() - 1; i >= 0; i--)
      {
-      if(!pos.SelectByIndex(i))    continue;
-      if(pos.Symbol() != _Symbol)  continue;
-      if(pos.Magic()  != InpMagic) continue;
+      if(!pos.SelectByIndex(i))      continue;
+      if(pos.Symbol() != _Symbol)    continue;
+      if(pos.Magic()  != InpMagic)   continue;
+      if(pos.PositionType() != type) continue;
       total += pos.Profit() + pos.Swap() + pos.Commission();
      }
    return(total);
@@ -695,6 +708,22 @@ void ClosePosition(const ulong ticket)
    if(!trade.PositionClose(ticket))
       PrintFormat("平仓失败 ticket=%I64u retcode=%d err=%d",
                   ticket, trade.ResultRetcode(), GetLastError());
+  }
+
+//+------------------------------------------------------------------+
+//| 平掉本 symbol+magic 某一方向(买/卖)的所有持仓                    |
+//+------------------------------------------------------------------+
+void CloseSide(const ENUM_POSITION_TYPE type)
+  {
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+     {
+      if(!pos.SelectByIndex(i))      continue;
+      if(pos.Symbol() != _Symbol)    continue;
+      if(pos.Magic()  != InpMagic)   continue;
+      if(pos.PositionType() != type) continue;
+
+      ClosePosition(pos.Ticket());
+     }
   }
 
 //+------------------------------------------------------------------+
