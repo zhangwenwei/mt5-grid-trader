@@ -14,6 +14,7 @@ MT5 区间双向网格 EA（单一策略）：上半做空 / 下半做多、逆�
 - **开单同时满足**：方向开关(`InpEnableSell/Buy`)、当前 bid/ask 在区间内、该方向冷却已武装(`g_lastSellLine/BuyLine==0`)、持仓数 < `InpMaxOrdersPerSide`、价格进入网格线 `±tol`、`HasOrderNear` 该线半格内无同向单。
 - **上下边界**：`InpUpperPrice`/`InpLowerPrice` **人工必填**(>0 且 上>下)，`g_center=(上+下)/2` 自动算；无自动定界，非法则 OnInit 拒绝启动。
 - **网格间距 `InpGridSizePips`**：固定 pips（`grid=InpGridSizePips*g_pip`），与区间宽度无关。
+- **第一单须触碰边界 `InpFirstOrderAtEdge`**(默认开)：某方向空仓时第一单必须等价格先碰对应边界(空碰上界 `bid≥上界−tol` / 多碰下界)才开，避免区间中部就开单；加仓不受限；空仓且价格离开边界超 `release` 则撤防(`g_sellArmed`/`g_buyArmed`)。
 
 ## 阶梯手数（`LotForLine`）
 - **靠边界大、向中线递减**：`lots = InpInitLots − distEdge×InpReduceLots`，封底 `InpMinLots`。
@@ -33,6 +34,7 @@ MT5 区间双向网格 EA（单一策略）：上半做空 / 下半做多、逆�
 - **越界处理 `InpBreakoutMode`**：`BREAKOUT_OFF`(不处理，无兜底) / `BREAKOUT_CLOSE_ALL`(超界 `CloseAll` 并暂停，收盘回内侧自动恢复)。
 
 ## 可视化
+- **画图总开关 `InpShowGraphics`**(默认开)：off = 不画任何图形(边界/网格线/标签/越界恢复线/竖线/信息面板)，**不影响交易**；守卫在 `DrawLines`/`DrawVLine`/`DrawInfoPanel` 及 OnTick 刷新块开头。
 - 买/卖独立(各自统计、各自止盈)，只认 `_Symbol + InpMagic`；点差过滤 `InpMaxSpreadPoints`(默认 0=关)。
 - **水平线**(仅视觉/实盘图显示)：红上界 / 金中线 / 绿下界 / 灰网格线；**黄粗线**=越界触发线(边界±门槛)；**绿粗线**=恢复界限(边界内侧±缓冲)。
 - **垂直线**(`DrawVLine`)：**蓝**=越界全平止损时刻；**绿**=移动止损平仓且落袋 `≥InpTPPips`(赚得多)；**黄**=移动止损平仓且落袋 `<InpTPPips`(赚得少)。注意黄色被复用——水平黄=越界线、垂直黄=移动止损未达标，按线型区分。

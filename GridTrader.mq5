@@ -13,7 +13,7 @@
 //|  是主要刹车), 请控制手数与单数, 注意保证金, 先模拟回测。         |
 //+------------------------------------------------------------------+
 #property copyright "GridTrader"
-#property version   "1.00"
+#property version   "1.01"
 #property strict
 
 #include <Trade\Trade.mqh>
@@ -32,6 +32,8 @@ input double   InpLowerPrice       = 0;         // 网格下边界价 (必填, >
 input group           "=== 网格设置 ==="
 input double   InpGridSizePips     = 20.0;      // 网格间距 (pips)
 input int      InpMaxOrdersPerSide = 20;        // 每方向最大单数 (刹车)
+// 某方向空仓时, 第一单必须等价格先触碰对应边界(空碰上界/多碰下界)才开, 避免区间中部就开单。
+input bool     InpFirstOrderAtEdge = true;      // 第一单须先触碰边界 (空仓时生效)
 
 input group           "=== 手数 (阶梯: 边界大, 向中线递减) ==="
 // 最靠边界的网格单用 InpInitLots; 每向中线方向拉开一格手数 -InpReduceLots; 不低于 InpMinLots。
@@ -51,6 +53,15 @@ input group           "=== 移动止损 (开关, ON 时替代上面的总体止�
 //  关 = 直接平(总体止盈); 开 = 启动跟踪记峰值, 从峰值回撤 InpTrailRetracePct% 才平该方向(让利润奔跑)。
 input bool     InpTrailEnable     = false;      // 开启移动止损 (ON 替代总体止盈)
 input double   InpTrailRetracePct = 30.0;       // 峰值回撤百分比(%): 从峰值回落此 % 平该方向
+
+input group           "=== 方向篮子止损 (独立模块, 测试用; 默认关) ==="
+// 与上面的"总体止盈/移动止损"完全独立: 单独开关、单独函数、单独调用点,
+// 便于单独回测验证后, 再合并进 TrailTotal() 作为移动止损的止损分支。
+// 触发: 某方向"手数加权平均浮亏"(pips/手) 达到本阈值 -> 平掉该方向全部持仓。
+// 注意: 砍仓后若价格继续不利, 网格可能在更远的网格线重新开同向单(网格本性),
+//       回测时重点观察"砍了又铺"的频率及其对总利润/回撤的影响。
+input bool     InpSideStopEnable  = false;      // 开启方向篮子止损 (独立)
+input double   InpSideStopPips    = 0.0;        // 该方向加权平均浮亏达此 pips/手 -> 平该方向 (>0生效)
 
 input group           "=== 越界判断 (怎么算 越界 / 恢复) ==="
 // 全部基于上一根已收盘 K 线(避免插针误触发)。越界与恢复共用同一距离:
@@ -82,6 +93,9 @@ input double   InpMaxSpreadPoints  = 0;         // 最大点差(points), <=0 不
 input long     InpMagic            = 20240601;  // 魔术号
 input ulong    InpSlippagePoints   = 30;        // 允许滑点(points)
 
+input group           "=== 图形显示 ==="
+input bool     InpShowGraphics     = true;      // 画图总开关(边界/网格/竖线/信息面板); off=不画, 不影响交易
+
 //--- 全局对象 -------------------------------------------------------
 CTrade        trade;
 CPositionInfo pos;
@@ -99,6 +113,11 @@ double g_lower  = 0.0;   // 网格下边界
 // 0 表示无记录(已武装, 可开单)。
 double g_lastBuyLine  = 0.0;
 double g_lastSellLine = 0.0;
+
+// 第一单触碰边界武装(InpFirstOrderAtEdge): true=已碰过对应边界, 空仓时才允许开第一单。
+// 该方向空仓且价格离开边界后撤防, 要求重新碰边界。
+bool   g_sellArmed = false;   // 卖组: 碰过上界才可开第一空
+bool   g_buyArmed  = false;   // 买组: 碰过下界才可开第一多
 
 // 总体移动止损: 记录该方向合计浮盈 pips 的峰值(>=触发阈值后回撤平组)。无持仓时归 0。
 double g_trailPeakBuy  = 0.0;
@@ -140,6 +159,13 @@ int OnInit()
    if(InpTrailEnable && (InpTrailRetracePct <= 0 || InpTrailRetracePct >= 100 || InpTPPips <= 0))
      {
       Print("参数非法: 移动止损需 InpTPPips>0 且 回撤百分比在 (0,100) 之间");
+      return(INIT_PARAMETERS_INCORRECT);
+     }
+
+   // 方向篮子止损(独立模块): 开启时阈值必须 > 0
+   if(InpSideStopEnable && InpSideStopPips <= 0)
+     {
+      Print("参数非法: 方向篮子止损开启时 InpSideStopPips 必须 > 0");
       return(INIT_PARAMETERS_INCORRECT);
      }
 
@@ -211,6 +237,8 @@ double OnTester()
 //+------------------------------------------------------------------+
 void DrawLines()
   {
+   if(!InpShowGraphics) return;
+
    // 网格线 (淡灰点线): 先画, 放背景层, 让边界/中线浮在其上不被覆盖
    double grid = InpGridSizePips * g_pip;
    int gi = 0;
@@ -306,6 +334,7 @@ void DrawPriceLabel(const string nm, const double price, const string text, cons
 //+------------------------------------------------------------------+
 void DrawVLine(const color clr, const int width=1, const bool back=true)
   {
+   if(!InpShowGraphics) return;
    datetime t = iTime(_Symbol, _Period, 0);   // 当前 K 线时间
    if(t <= 0) t = TimeCurrent();
    string nm = "GT_v_" + IntegerToString((long)t);
@@ -342,6 +371,7 @@ void InfoLabel(const string nm, const int y, const string text, const color clr)
 //+------------------------------------------------------------------+
 void DrawInfoPanel()
   {
+   if(!InpShowGraphics) return;
    int    buyN      = CountSide(POSITION_TYPE_BUY);
    int    sellN     = CountSide(POSITION_TYPE_SELL);
    double buyPips   = WeightedPipsByType(POSITION_TYPE_BUY);
@@ -403,7 +433,7 @@ void OnTick()
    // 让标签始终显示在图表右侧(OnInit 时测试器拿不到有效时间, 故在此刷新)。
    static datetime lblBar = 0;
    datetime curBar = iTime(_Symbol, _Period, 0);
-   if(curBar > 0 && curBar != lblBar)
+   if(InpShowGraphics && curBar > 0 && curBar != lblBar)
      {
       lblBar = curBar;
       ObjectMove(0, "GT_upper_lbl",  0, curBar, g_upper);
@@ -453,6 +483,10 @@ void OnTick()
    // 1b) 移动止损(ON 时替代总体止盈): 按方向整组合计浮盈跟踪, 回撤触及平该方向
    if(InpTrailEnable && TrailTotal())
       return;                       // 整组移动止损平仓, 本 tick 不再开单
+
+   // 1c) 方向篮子止损 (独立模块, 与上面止盈/移动止损解耦; 测试OK后再并入 TrailTotal)
+   if(SideBasketStop())
+      return;                       // 某方向触发止损平组, 本 tick 不再开单
 
    // 2) 区间内开网格单
    TradeGrid(grid);
@@ -568,8 +602,20 @@ void TradeGrid(const double grid)
    bool buyInRange  = (ask >= g_lower && ask <= g_upper);   // 开多需当前价在区间内
    bool sellInRange = (bid >= g_lower && bid <= g_upper);   // 开空需当前价在区间内
 
+   int sellN = CountSide(POSITION_TYPE_SELL);
+   int buyN  = CountSide(POSITION_TYPE_BUY);
+
+   // 第一单须先触碰边界(空仓时): 碰上界武装卖、碰下界武装多; 空仓且价格离开边界则撤防。
+   // 有持仓时(加仓)不受此限。InpFirstOrderAtEdge=false 则视为始终已武装。
+   if(bid >= g_upper - tol) g_sellArmed = true;
+   if(ask <= g_lower + tol) g_buyArmed  = true;
+   if(sellN == 0 && bid < g_upper - release) g_sellArmed = false;
+   if(buyN  == 0 && ask > g_lower + release) g_buyArmed  = false;
+   bool sellAllowed = (!InpFirstOrderAtEdge || sellN > 0 || g_sellArmed);
+   bool buyAllowed  = (!InpFirstOrderAtEdge || buyN  > 0 || g_buyArmed);
+
    //--- 上半区: 从中线+一格向上每隔一格一条网格线, 到上界 -> 做空 ---
-   if(InpEnableSell && sellInRange && g_lastSellLine == 0.0 && CountSide(POSITION_TYPE_SELL) < InpMaxOrdersPerSide)
+   if(InpEnableSell && sellAllowed && sellInRange && g_lastSellLine == 0.0 && sellN < InpMaxOrdersPerSide)
      {
       for(int k = 1; ; k++)
         {
@@ -586,7 +632,7 @@ void TradeGrid(const double grid)
      }
 
    //--- 下半区: 从中线-一格向下每隔一格一条网格线, 到下界 -> 做多 ---
-   if(InpEnableBuy && buyInRange && g_lastBuyLine == 0.0 && CountSide(POSITION_TYPE_BUY) < InpMaxOrdersPerSide)
+   if(InpEnableBuy && buyAllowed && buyInRange && g_lastBuyLine == 0.0 && buyN < InpMaxOrdersPerSide)
      {
       for(int k = 1; ; k++)
         {
@@ -753,6 +799,53 @@ bool TrailTotal()
         }
      }
    else g_trailPeakSell = 0.0;
+
+   return(closed);
+  }
+
+//+------------------------------------------------------------------+
+//| 方向篮子止损 (独立模块, 与止盈/移动止损解耦, 便于单独回测验证)。 |
+//|  某方向"手数加权平均浮亏"(pips/手) 达到 InpSideStopPips 时,       |
+//|  平掉该方向全部持仓。返回 true 表示本 tick 有平仓动作。          |
+//|  复用 WeightedPipsByType / CloseSide, 度量口径与止盈完全一致。   |
+//|  注: 测试通过后, 可把这两段并入 TrailTotal() 作为其止损分支。    |
+//+------------------------------------------------------------------+
+bool SideBasketStop()
+  {
+   if(!InpSideStopEnable || InpSideStopPips <= 0)
+      return(false);
+
+   bool closed = false;
+
+   // 买组: 加权平均浮亏达阈值 -> 平所有买单
+   if(CountSide(POSITION_TYPE_BUY) > 0)
+     {
+      double p = WeightedPipsByType(POSITION_TYPE_BUY);
+      if(p <= -InpSideStopPips)
+        {
+         PrintFormat("买组篮子止损: 加权平均浮亏 %.1f pips/手 <= -%.1f, 平掉所有买单",
+                     p, InpSideStopPips);
+         CloseSide(POSITION_TYPE_BUY);
+         DrawVLine(clrRed, 2, false);   // 篮子止损: 红色竖线
+         g_trailPeakBuy = 0.0;          // 同步清空峰值, 防下一组沿用旧峰值(移动止损开启时)
+         closed = true;
+        }
+     }
+
+   // 卖组: 同上
+   if(CountSide(POSITION_TYPE_SELL) > 0)
+     {
+      double p = WeightedPipsByType(POSITION_TYPE_SELL);
+      if(p <= -InpSideStopPips)
+        {
+         PrintFormat("卖组篮子止损: 加权平均浮亏 %.1f pips/手 <= -%.1f, 平掉所有卖单",
+                     p, InpSideStopPips);
+         CloseSide(POSITION_TYPE_SELL);
+         DrawVLine(clrRed, 2, false);
+         g_trailPeakSell = 0.0;
+         closed = true;
+        }
+     }
 
    return(closed);
   }
