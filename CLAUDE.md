@@ -14,7 +14,7 @@ MT5 区间双向网格 EA（单一策略）：上半做空 / 下半做多、逆�
 - **开单同时满足**：方向开关(`InpEnableSell/Buy`)、当前 bid/ask 在区间内、该方向冷却已武装(`g_lastSellLine/BuyLine==0`)、持仓数 < `InpMaxOrdersPerSide`、价格进入网格线 `±tol`、`HasOrderNear` 该线半格内无同向单。
 - **上下边界**：`InpUpperPrice`/`InpLowerPrice` **人工必填**(>0 且 上>下)，`g_center=(上+下)/2` 自动算；无自动定界，非法则 OnInit 拒绝启动。
 - **网格间距 `InpGridSizePips`**：固定 pips（`grid=InpGridSizePips*g_pip`），与区间宽度无关。
-- **第一单须触碰边界 `InpFirstOrderAtEdge`**(默认开)：某方向空仓时第一单必须等价格先碰对应边界(空碰上界 `bid≥上界−tol` / 多碰下界)才开，避免区间中部就开单；加仓不受限；空仓且价格离开边界超 `release` 则撤防(`g_sellArmed`/`g_buyArmed`)。
+- **第一单须触碰边界 `InpFirstOrderAtEdge`**(默认开)：某方向空仓时第一单必须等价格先碰**最外侧网格线**(空碰最高空线 `bid≥topSellLine−tol` / 多碰最低多线 `ask≤botBuyLine+tol`)才开，避免区间中部就开单；加仓不受限；空仓且价格离开该线超 `release` 则撤防(`g_sellArmed`/`g_buyArmed`)。**武装判据用最外侧网格线(实际开单位置)而非裸边界 `g_upper/g_lower`**——区间宽非网格整数倍时最外侧线距边界可达近一格，用裸边界会碰不到而锁死/漏开第一单(对齐缺陷修复)。`topSellLine=g_center+⌊(上−中+tol)/grid⌋×grid`、`botBuyLine` 同理向下取。
 
 ## 阶梯手数（`LotForLine`）
 - **靠边界大、向中线递减**：`lots = InpInitLots − distEdge×InpReduceLots`，封底 `InpMinLots`。

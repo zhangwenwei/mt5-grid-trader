@@ -13,7 +13,7 @@
 //|  是主要刹车), 请控制手数与单数, 注意保证金, 先模拟回测。         |
 //+------------------------------------------------------------------+
 #property copyright "GridTrader"
-#property version   "1.01"
+#property version   "1.02"
 #property strict
 
 #include <Trade\Trade.mqh>
@@ -114,10 +114,11 @@ double g_lower  = 0.0;   // 网格下边界
 double g_lastBuyLine  = 0.0;
 double g_lastSellLine = 0.0;
 
-// 第一单触碰边界武装(InpFirstOrderAtEdge): true=已碰过对应边界, 空仓时才允许开第一单。
-// 该方向空仓且价格离开边界后撤防, 要求重新碰边界。
-bool   g_sellArmed = false;   // 卖组: 碰过上界才可开第一空
-bool   g_buyArmed  = false;   // 买组: 碰过下界才可开第一多
+// 第一单触碰边界武装(InpFirstOrderAtEdge): true=已碰过最外侧网格线, 空仓时才允许开第一单。
+// 该方向空仓且价格离开该线后撤防, 要求重新触碰。(武装判据用最外侧网格线而非裸边界,
+// 避免区间宽非网格整数倍时碰不到边界而锁死第一单。)
+bool   g_sellArmed = false;   // 卖组: 碰过最高空线才可开第一空
+bool   g_buyArmed  = false;   // 买组: 碰过最低多线才可开第一多
 
 // 总体移动止损: 记录该方向合计浮盈 pips 的峰值(>=触发阈值后回撤平组)。无持仓时归 0。
 double g_trailPeakBuy  = 0.0;
@@ -605,12 +606,17 @@ void TradeGrid(const double grid)
    int sellN = CountSide(POSITION_TYPE_SELL);
    int buyN  = CountSide(POSITION_TYPE_BUY);
 
-   // 第一单须先触碰边界(空仓时): 碰上界武装卖、碰下界武装多; 空仓且价格离开边界则撤防。
-   // 有持仓时(加仓)不受此限。InpFirstOrderAtEdge=false 则视为始终已武装。
-   if(bid >= g_upper - tol) g_sellArmed = true;
-   if(ask <= g_lower + tol) g_buyArmed  = true;
-   if(sellN == 0 && bid < g_upper - release) g_sellArmed = false;
-   if(buyN  == 0 && ask > g_lower + release) g_buyArmed  = false;
+   // 第一单须先触碰"最外侧网格线"(空仓时): 碰最高空线武装卖、碰最低多线武装多;
+   // 空仓且价格离开该线超 release 则撤防。有持仓时(加仓)不受此限,
+   // InpFirstOrderAtEdge=false 则视为始终已武装。
+   // 武装判据用"最外侧网格线"(实际开单位置)而非裸边界: 区间宽非网格整数倍时,
+   // 最外侧线距边界可达近一格, 用裸边界会因碰不到而锁死/漏开第一单(对齐缺陷)。
+   double topSellLine = g_center + MathFloor((g_upper - g_center + tol) / grid) * grid; // 最靠上界的空线
+   double botBuyLine  = g_center - MathFloor((g_center - g_lower + tol) / grid) * grid; // 最靠下界的多线
+   if(bid >= topSellLine - tol) g_sellArmed = true;
+   if(ask <= botBuyLine  + tol) g_buyArmed  = true;
+   if(sellN == 0 && bid < topSellLine - release) g_sellArmed = false;
+   if(buyN  == 0 && ask > botBuyLine  + release) g_buyArmed  = false;
    bool sellAllowed = (!InpFirstOrderAtEdge || sellN > 0 || g_sellArmed);
    bool buyAllowed  = (!InpFirstOrderAtEdge || buyN  > 0 || g_buyArmed);
 
