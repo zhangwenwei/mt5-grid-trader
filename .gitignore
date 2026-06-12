@@ -4,6 +4,7 @@
 
 # Claude 工作目录
 .claude/
+memory/
 
 # 系统/编辑器
 Thumbs.db
