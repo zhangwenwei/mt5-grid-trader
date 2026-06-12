@@ -6,6 +6,9 @@
 .claude/
 memory/
 
+# 临时演示/分析文件
+*.html
+
 # 系统/编辑器
 Thumbs.db
 desktop.ini

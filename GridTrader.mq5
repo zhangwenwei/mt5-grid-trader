@@ -93,9 +93,8 @@ double g_grid   = 0.0;   // 格距 = (上界-下界)/InpGridCount (OnInit 自动
 double g_lastBuyLine  = 0.0;
 double g_lastSellLine = 0.0;
 
-// 第一单触碰边界武装(InpFirstOrderAtEdge): true=已碰过最外侧网格线, 空仓时才允许开第一单。
-// 该方向空仓且价格离开该线后撤防, 要求重新触碰。(武装判据用最外侧网格线而非裸边界,
-// 避免区间宽非网格整数倍时碰不到边界而锁死第一单。)
+// 第一单触碰边界武装(InpFirstOrderAtEdge): true=已碰过裸边界, 空仓时才允许开第一单。
+// 该方向空仓且价格离开边界超 release 后撤防, 要求重新触碰。
 bool   g_sellArmed = false;   // 卖组: 碰过最高空线才可开第一空
 bool   g_buyArmed  = false;   // 买组: 碰过最低多线才可开第一多
 
@@ -170,6 +169,7 @@ int OnInit()
    g_grid   = (g_upper - g_lower) / InpGridCount;   // 格距 = 区间宽 / 网格数量
 
    DrawLines();
+   DrawInfoPanelTrail();   // 顶行参数运行期不变, 只在 OnInit 画一次
 
    PrintFormat("GridTrader v3 启动. 上界=%.5f 中线=%.5f 下界=%.5f 网格数=%d 格距=%.5f",
                g_upper, g_center, g_lower, InpGridCount, g_grid);
@@ -226,9 +226,9 @@ void DrawLines()
      { DrawHSeg("GT_g_d" + IntegerToString(gi), line, C'200,200,210', STYLE_DOT, 1, true); gi++; }
 
    // 上界 (红色虚线) / 中线 (黄色实线) / 下界 (绿色虚线): 后画, 放前景层(BACK=false)
-   DrawHSeg("GT_upper",  g_upper,  clrTomato,    STYLE_DASH,  1, false);
-   DrawHSeg("GT_center", g_center, clrGold,      STYLE_SOLID, 2, false);
-   DrawHSeg("GT_lower",  g_lower,  clrLimeGreen, STYLE_DASH,  1, false);
+   DrawHSeg("GT_upper",  g_upper,  clrTomato,    STYLE_SOLID, 3, false);
+   DrawHSeg("GT_center", g_center, clrYellow,    STYLE_DASH,  1, false);
+   DrawHSeg("GT_lower",  g_lower,  clrLimeGreen, STYLE_SOLID, 3, false);
 
    // 上界/中线/下界的价格数值标签
    DrawPriceLabel("GT_upper_lbl",  g_upper,  "上界 " + DoubleToString(g_upper,  g_digits), clrTomato);
@@ -261,8 +261,8 @@ void DrawBreakoutLines()
    DrawHSeg("GT_brk_dn", g_lower - margin, clrYellow, STYLE_SOLID, 3, false);
 
    double buffer = ClampBuffer(BreakoutDist());
-   DrawHSeg("GT_rec_up", g_upper - buffer, clrLime, STYLE_SOLID, 3, false);
-   DrawHSeg("GT_rec_dn", g_lower + buffer, clrLime, STYLE_SOLID, 3, false);
+   DrawHSeg("GT_rec_up", g_upper - buffer, clrYellow, STYLE_DASH, 1, false);
+   DrawHSeg("GT_rec_dn", g_lower + buffer, clrYellow, STYLE_DASH, 1, false);
   }
 
 //+------------------------------------------------------------------+
@@ -344,51 +344,89 @@ void InfoLabel(const string nm, const int y, const string text, const color clr)
 //| 左上角实时盈亏面板: 买/卖两组各自的总体盈利(总pips)+单数。      |
 //|  盈=绿, 亏=红, 无持仓=灰。                                      |
 //+------------------------------------------------------------------+
-void DrawInfoPanel()
+void DrawInfoPanelTrail()
   {
    if(!InpShowGraphics) return;
-   int    buyN      = CountSide(POSITION_TYPE_BUY);
-   int    sellN     = CountSide(POSITION_TYPE_SELL);
-   double buyPips   = TotalPipsByType(POSITION_TYPE_BUY);
-   double sellPips  = TotalPipsByType(POSITION_TYPE_SELL);
-   double keepRatio = InpTrailKeepPct / 100.0;   // 移动止损保留比例(回撤到峰值的此比例就平)
-
-   // 顶行: 移动止损 开/关 + 参数
-   string addTxt = (InpTPAddPerOrder != 0) ? StringFormat("(+%d/单)", InpTPAddPerOrder) : "";
+   string addTxt   = (InpTPAddPerOrder != 0) ? StringFormat("(+%d/单)", InpTPAddPerOrder) : "";
    string trailTxt = InpTrailEnable
                      ? StringFormat("移动止损: 开   启动 %d%s / 回撤到 %d%%", InpTPPips, addTxt, InpTrailKeepPct)
                      : StringFormat("移动止损: 关   (总体止盈 %d%s 总pips)", InpTPPips, addTxt);
    InfoLabel("GT_info_trail", 56, trailTxt, InpTrailEnable ? clrGold : clrSilver);
+  }
 
-   // 买行: 总体盈利(总pips) + (移动止损开启时)止损目标点
-   string buyTxt = StringFormat("买 %+.1f 总pips (%d单)", buyPips, buyN);
-   if(InpTrailEnable && buyN > 0)
+void DrawInfoPanel()
+  {
+   if(!InpShowGraphics) return;
+   int    buyN  = CountSide(POSITION_TYPE_BUY);
+   int    sellN = CountSide(POSITION_TYPE_SELL);
+
+   static string prevBuyTxt  = "";  static color prevBuyClr  = clrNONE;
+   static string prevSellTxt = "";  static color prevSellClr = clrNONE;
+   bool changed = false;
+
+   // 买行: 无持仓时只在首次写入灰色占位, 之后跳过
+   string buyTxt;
+   color  buyClr;
+   if(buyN == 0)
      {
-      int    startB  = TpThreshold(buyN);                            // 启动阈值(随买单数)
-      bool   armedB  = (g_trailPeakBuy >= startB);                    // 是否已启动跟踪
-      double targetB = (armedB ? g_trailPeakBuy : startB) * keepRatio;
-      buyTxt += armedB
-                ? StringFormat("  峰值%.1f 止损目标%.1f (已启动)", g_trailPeakBuy, targetB)
-                : StringFormat("  峰值%.1f→启动%d 止损目标%.1f (待启动)", g_trailPeakBuy, startB, targetB);
+      buyTxt = "买 -- (0单)";
+      buyClr = clrGray;
      }
-   InfoLabel("GT_info_buy", 100, buyTxt,
-             buyN == 0 ? clrGray : (buyPips >= 0 ? clrLime : clrTomato));
-
-   // 卖行: 同上
-   string sellTxt = StringFormat("卖 %+.1f 总pips (%d单)", sellPips, sellN);
-   if(InpTrailEnable && sellN > 0)
+   else
      {
-      int    startS  = TpThreshold(sellN);                           // 启动阈值(随卖单数)
-      bool   armedS  = (g_trailPeakSell >= startS);
-      double targetS = (armedS ? g_trailPeakSell : startS) * keepRatio;
-      sellTxt += armedS
-                 ? StringFormat("  峰值%.1f 止损目标%.1f (已启动)", g_trailPeakSell, targetS)
-                 : StringFormat("  峰值%.1f→启动%d 止损目标%.1f (待启动)", g_trailPeakSell, startS, targetS);
+      double buyPips   = TotalPipsByType(POSITION_TYPE_BUY);
+      double keepRatio = InpTrailKeepPct / 100.0;
+      buyTxt = StringFormat("买 %+.1f 总pips (%d单)", buyPips, buyN);
+      if(InpTrailEnable)
+        {
+         int    startB  = TpThreshold(buyN);
+         bool   armedB  = (g_trailPeakBuy >= startB);
+         double targetB = (armedB ? g_trailPeakBuy : startB) * keepRatio;
+         buyTxt += armedB
+                   ? StringFormat("  峰值%.1f 止损目标%.1f (已启动)", g_trailPeakBuy, targetB)
+                   : StringFormat("  峰值%.1f→启动%d 止损目标%.1f (待启动)", g_trailPeakBuy, startB, targetB);
+        }
+      buyClr = (buyPips >= 0 ? clrLime : clrTomato);
      }
-   InfoLabel("GT_info_sell", 144, sellTxt,
-             sellN == 0 ? clrGray : (sellPips >= 0 ? clrLime : clrTomato));
+   if(buyTxt != prevBuyTxt || buyClr != prevBuyClr)
+     {
+      InfoLabel("GT_info_buy", 100, buyTxt, buyClr);
+      prevBuyTxt = buyTxt;  prevBuyClr = buyClr;
+      changed = true;
+     }
 
-   ChartRedraw(0);
+   // 卖行: 同上逻辑
+   string sellTxt;
+   color  sellClr;
+   if(sellN == 0)
+     {
+      sellTxt = "卖 -- (0单)";
+      sellClr = clrGray;
+     }
+   else
+     {
+      double sellPips  = TotalPipsByType(POSITION_TYPE_SELL);
+      double keepRatio = InpTrailKeepPct / 100.0;
+      sellTxt = StringFormat("卖 %+.1f 总pips (%d单)", sellPips, sellN);
+      if(InpTrailEnable)
+        {
+         int    startS  = TpThreshold(sellN);
+         bool   armedS  = (g_trailPeakSell >= startS);
+         double targetS = (armedS ? g_trailPeakSell : startS) * keepRatio;
+         sellTxt += armedS
+                    ? StringFormat("  峰值%.1f 止损目标%.1f (已启动)", g_trailPeakSell, targetS)
+                    : StringFormat("  峰值%.1f→启动%d 止损目标%.1f (待启动)", g_trailPeakSell, startS, targetS);
+        }
+      sellClr = (sellPips >= 0 ? clrLime : clrTomato);
+     }
+   if(sellTxt != prevSellTxt || sellClr != prevSellClr)
+     {
+      InfoLabel("GT_info_sell", 144, sellTxt, sellClr);
+      prevSellTxt = sellTxt;  prevSellClr = sellClr;
+      changed = true;
+     }
+
+   if(changed) ChartRedraw(0);
   }
 
 //+------------------------------------------------------------------+
@@ -404,7 +442,7 @@ void OnTick()
 
    double grid = g_grid;
 
-   DrawInfoPanel();   // 左上角实时(每 tick)显示买/卖总体盈利(总pips), 防显示滞后误判盈亏
+   DrawInfoPanel();   // 买/卖行: 内容未变跳过 ObjectSet*, 无持仓方向几乎不触发
 
    // 价格标签是 OBJ_TEXT, 每根新 bar 右移到当前 K 线以保持在图右侧(逐 tick 移无必要);
    // OnInit 时测试器拿不到有效时间, 故在此刷新。边界/中线/网格线是 OBJ_HLINE 不随时间动。
@@ -574,17 +612,13 @@ void TradeGrid(const double grid)
    int sellN = CountSide(POSITION_TYPE_SELL);
    int buyN  = CountSide(POSITION_TYPE_BUY);
 
-   // 第一单须先触碰"最外侧网格线"(空仓时): 碰最高空线武装卖、碰最低多线武装多;
-   // 空仓且价格离开该线超 release 则撤防。有持仓时(加仓)不受此限,
+   // 第一单须先触碰裸边界(空仓时): 空碰上界武装卖、多碰下界武装买;
+   // 空仓且价格离开边界超 release 则撤防。有持仓时(加仓)不受此限,
    // InpFirstOrderAtEdge=false 则视为始终已武装。
-   // 武装判据用"最外侧网格线"(实际开单位置)而非裸边界: 区间宽非网格整数倍时,
-   // 最外侧线距边界可达近一格, 用裸边界会因碰不到而锁死/漏开第一单(对齐缺陷)。
-   double topSellLine = g_center + MathFloor((g_upper - g_center + tol) / grid) * grid; // 最靠上界的空线
-   double botBuyLine  = g_center - MathFloor((g_center - g_lower + tol) / grid) * grid; // 最靠下界的多线
-   if(bid >= topSellLine - tol) g_sellArmed = true;
-   if(ask <= botBuyLine  + tol) g_buyArmed  = true;
-   if(sellN == 0 && bid < topSellLine - release) g_sellArmed = false;
-   if(buyN  == 0 && ask > botBuyLine  + release) g_buyArmed  = false;
+   if(bid >= g_upper - tol) g_sellArmed = true;
+   if(ask <= g_lower + tol) g_buyArmed  = true;
+   if(sellN == 0 && bid < g_upper - release) g_sellArmed = false;
+   if(buyN  == 0 && ask > g_lower + release) g_buyArmed  = false;
    bool sellAllowed = (!InpFirstOrderAtEdge || sellN > 0 || g_sellArmed);
    bool buyAllowed  = (!InpFirstOrderAtEdge || buyN  > 0 || g_buyArmed);
 
