@@ -13,7 +13,7 @@
 //|  /2 天然封顶), 请控制手数与格数, 注意保证金, 先模拟回测。         |
 //+------------------------------------------------------------------+
 #property copyright "GridTrader"
-#property version   "1.03"
+#property version   "1.05"
 #property strict
 
 #include <Trade\Trade.mqh>
@@ -21,58 +21,60 @@
 
 //--- 输入参数 -------------------------------------------------------
 input group           "=== 方向开关 ==="
-input bool     InpEnableBuy        = true;      // 允许下半做多
-input bool     InpEnableSell       = true;      // 允许上半做空
+input bool     TradeGrid_EnableBuy        = true;      // TradeGrid_EnableBuy | 允许下半做多
+input bool     TradeGrid_EnableSell       = true;      // TradeGrid_EnableSell | 允许上半做空
 
 input group           "=== 网格区间 (人工必填) ==="
 // 上下界必须手动填具体价格; 中线 = (上界+下界)/2 自动算。
-input double   InpUpperPrice       = 0;         // 网格上边界价 (必填, >0)
-input double   InpLowerPrice       = 0;         // 网格下边界价 (必填, >0)
+input double   TradeGrid_UpperPrice       = 0;         // TradeGrid_UpperPrice | 网格上边界价 (必填, >0)
+input double   TradeGrid_LowerPrice       = 0;         // TradeGrid_LowerPrice | 网格下边界价 (必填, >0)
 
 input group           "=== 网格设置 ==="
 // 网格数量: 把上下边界等分成这么多格, 格距 = (上界-下界)/数量 自动算。
 // 例: 110-111 设 10 -> 每格 0.1。买单从下界向中线、卖单从上界向中线布网, 中线不开单。
-input int      InpGridCount        = 10;        // 网格数量 (>=2; 把区间等分, 格距自动算)
+input int      TradeGrid_GridCount        = 10;        // TradeGrid_GridCount | 网格数量 (>=2; 把区间等分, 格距自动算)
 // 注: 同方向同时持仓的上限由网格线数(≈格数/2)天然封顶, 故无单独"最大单数"参数。
 // 某方向空仓时, 第一单必须等价格先触碰对应边界(空碰上界/多碰下界)才开, 避免区间中部就开单。
-input bool     InpFirstOrderAtEdge = true;      // 第一单须先触碰边界 (空仓时生效)
+input bool     TradeGrid_FirstAtEdge = true;      // TradeGrid_FirstAtEdge | 第一单须先触碰边界 (空仓时生效)
 
 input group           "=== 手数 (阶梯: 边界大, 向中线递减) ==="
-// 最靠边界的网格单用 InpInitLots; 每向中线方向拉开一格手数 -InpReduceLots; 不低于 InpMinLots。
-// InpReduceLots=0 则所有格都用 InpInitLots(等于固定手数)。
-input double   InpInitLots   = 0.01;            // 边界处初始手数 (最靠边界, 最大)
-input double   InpReduceLots = 0.0;             // 每向中线拉开一格减少的手数 (0=固定手数)
-input double   InpMinLots    = 0.01;            // 最小手数下限
+// 最靠边界的网格单用 LotForLine_InitLots; 每向中线方向拉开一格手数 -LotForLine_ReducePerLine; 不低于 LotForLine_MinLots。
+// LotForLine_ReducePerLine=0 则所有格都用 LotForLine_InitLots(等于固定手数)。
+input double   LotForLine_InitLots   = 0.01;            // LotForLine_InitLots | 边界处初始手数 (最靠边界, 最大)
+input double   LotForLine_ReducePerLine = 0.0;             // LotForLine_ReducePerLine | 每向中线拉开一格减少的手数 (0=固定手数)
+input double   LotForLine_MinLots    = 0.01;            // LotForLine_MinLots | 最小手数下限
 
 input group           "=== 方向总体止盈 ==="
-// 买/卖两组各自结算"总体盈利 pips"(Σ单pips×手数/InpMinLots, 手数加权累加, 以最小手计)达 InpTPPips -> 平该方向全部单。
+// 买/卖两组各自结算"总体盈利 pips"(Σ单pips×手数/LotForLine_MinLots, 手数加权累加, 以最小手计)达 TpThreshold_BasePips -> 平该方向全部单。
 // 是全组累加(非每单平均): 单数越多/手数越大越易达标; 全是最小手时=各单 pips 简单相加。
-// (已移除单笔止盈, 只保留方向总体; 开下方移动止损时本阈值改作"启动阈值"。)
-// 阈值可随持仓单数线性抬高: 生效阈值 = InpTPPips + (该方向单数-1)×InpTPAddPerOrder。
-// 例 InpTPPips=70, InpTPAddPerOrder=10 -> 1单70 / 2单80 / 3单90 ...(单数越多, 要求总盈利越高)。
-input int      InpTPPips        = 30;           // 基准阈值(1单时): 该方向总体盈利达此 总pips -> 平/启动移动止损
-input int      InpTPAddPerOrder = 0;            // 每多持一单, 阈值增加的 总pips (0=固定, 不随单数变)
+input int      TpThreshold_BasePips        = 30;           // TpThreshold_BasePips | 止盈阈值(总pips): 固定止盈触发值 / 移动止损1单时启动值
 
 input group           "=== 移动止损 (开关, ON 时替代上面的总体止盈) ==="
-// 复用上面 InpTPPips 作启动阈值: 总体盈利(总pips)达 InpTPPips 时——
-//  关 = 直接平(总体止盈); 开 = 启动跟踪记峰值, 浮盈从峰值回落"到峰值的 InpTrailKeepPct%"才平(让利润奔跑)。
-input bool     InpTrailEnable     = false;      // 开启移动止损 (ON 替代总体止盈)
-input int      InpTrailKeepPct    = 70;         // 回撤到峰值的百分之多少(%)就平该方向; 越大越紧(回吐越少). 例80=跌到峰值的80%即平
+// 总体盈利(总pips)峰值达启动阈值后开始跟踪; 浮盈从峰值回落到"峰值的 TrailTotal_KeepPct%"时平该方向全部单。
+// 启动阈值 = TpThreshold_BasePips + (单数-1)×TrailTotal_AddPerOrder (单数越多要求越高)。
+input bool     TrailTotal_Enable     = false;      // TrailTotal_Enable | 开启移动止损 (ON 替代总体止盈)
+input int      TrailTotal_KeepPct    = 70;         // TrailTotal_KeepPct | 回撤到峰值的百分之多少(%)就平; 越大越紧. 例80=跌到峰值80%即平
+input int      TrailTotal_AddPerOrder = 0;         // TrailTotal_AddPerOrder | 每多持一单, 回撤触发百分比额外收紧的百分点 (0=不随单数变; 上限90%; 例基准70+每单5->1单70/2单75/3单80)
 
 input group           "=== 越界判断 (怎么算 越界 / 恢复; 越界恒为全平止损) ==="
 // 全部基于上一根已收盘 K 线(避免插针误触发)。越界与恢复共用同一距离(ATR 倍数, 随波动自适应):
 //   越界 = 收盘价 超出(边界 + 距离) -> 全平所有单并暂停(画蓝色竖线);
 //   恢复 = 收盘价 回到(边界内侧 距离)以内 -> 自动恢复交易。
-input double   InpBreakoutAtr       = 1.0;      // 越界/恢复距离 = 此倍数 × ATR
-input int      InpBreakoutAtrPeriod = 14;       // ATR 周期
+input double   BreakoutDist_AtrMult       = 1.0;      // BreakoutDist_AtrMult | 越界/恢复距离 = 此倍数 × ATR
+input int      BreakoutDist_AtrPeriod = 14;       // BreakoutDist_AtrPeriod | ATR 周期
+
+input group           "=== 超单亏损保护 (某方向持仓超标且当前浮亏时平该方向) ==="
+// 买单数或卖单数单独超过 LossCut_MinOrders 时, 若该方向当前浮盈(含隔夜利息) < 0 则平该方向。
+// 买卖各自独立判断, 互不影响。0 = 关闭此保护。
+input int      LossCut_MinOrders = 0;         // LossCut_MinOrders | 超单亏损保护触发单数 (某方向单数 > 此值时检查; 0=关闭)
 
 input group           "=== 过滤与风控 ==="
-input int      InpMaxSpreadPoints  = 0;         // 最大点差(points), <=0 不限制
-input long     InpMagic            = 20240601;  // 魔术号
-input ulong    InpSlippagePoints   = 30;        // 允许滑点(points)
+input int      OnTick_MaxSpread  = 0;         // OnTick_MaxSpread | 最大点差(points), <=0 不限制
+input long     CTrade_Magic            = 20240601;  // CTrade_Magic | 魔术号
+input ulong    CTrade_Slippage   = 30;        // CTrade_Slippage | 允许滑点(points)
 
 input group           "=== 图形显示 ==="
-input bool     InpShowGraphics     = true;      // 画图总开关(边界/网格/竖线/信息面板); off=不画, 不影响交易
+input bool     DrawLines_ShowGraphics     = true;      // DrawLines_ShowGraphics | 画图总开关(边界/网格/竖线/信息面板); off=不画, 不影响交易
 
 //--- 全局对象 -------------------------------------------------------
 CTrade        trade;
@@ -84,7 +86,7 @@ int    g_digits = 0;
 double g_center = 0.0;   // 中线 = (上界+下界)/2
 double g_upper  = 0.0;   // 网格上边界
 double g_lower  = 0.0;   // 网格下边界
-double g_grid   = 0.0;   // 格距 = (上界-下界)/InpGridCount (OnInit 自动算)
+double g_grid   = 0.0;   // 格距 = (上界-下界)/TradeGrid_GridCount (OnInit 自动算)
 
 // 冷却: 记录某方向最后一次开单的网格线价格。
 // 价格必须真正离开该线(超过 3/4 格)后, 才允许在该线重新开单,
@@ -93,7 +95,7 @@ double g_grid   = 0.0;   // 格距 = (上界-下界)/InpGridCount (OnInit 自动
 double g_lastBuyLine  = 0.0;
 double g_lastSellLine = 0.0;
 
-// 第一单触碰边界武装(InpFirstOrderAtEdge): true=已碰过裸边界, 空仓时才允许开第一单。
+// 第一单触碰边界武装(TradeGrid_FirstAtEdge): true=已碰过裸边界, 空仓时才允许开第一单。
 // 该方向空仓且价格离开边界超 release 后撤防, 要求重新触碰。
 bool   g_sellArmed = false;   // 卖组: 碰过最高空线才可开第一空
 bool   g_buyArmed  = false;   // 买组: 碰过最低多线才可开第一多
@@ -119,60 +121,60 @@ int OnInit()
    g_digits = (int)SymbolInfoInteger(_Symbol, SYMBOL_DIGITS);
    g_pip    = (g_digits == 3 || g_digits == 5) ? 10 * g_point : g_point;
 
-   trade.SetExpertMagicNumber(InpMagic);
-   trade.SetDeviationInPoints(InpSlippagePoints);
+   trade.SetExpertMagicNumber(CTrade_Magic);
+   trade.SetDeviationInPoints(CTrade_Slippage);
    trade.SetTypeFillingBySymbol(_Symbol);
 
-   if(InpGridCount < 2)
+   if(TradeGrid_GridCount < 2)
      {
       Print("参数非法: 网格数量须>=2");
       return(INIT_PARAMETERS_INCORRECT);
      }
 
-   if(InpInitLots <= 0 || InpMinLots <= 0 || InpReduceLots < 0 || InpInitLots < InpMinLots)
+   if(LotForLine_InitLots <= 0 || LotForLine_MinLots <= 0 || LotForLine_ReducePerLine < 0 || LotForLine_InitLots < LotForLine_MinLots)
      {
       Print("参数非法: 手数 InitLots/MinLots 须>0, ReduceLots>=0, 且 InitLots>=MinLots");
       return(INIT_PARAMETERS_INCORRECT);
      }
 
-   if(InpTPAddPerOrder < 0)
+   if(TrailTotal_AddPerOrder < 0)
      {
-      Print("参数非法: InpTPAddPerOrder 须>=0 (每多一单阈值增量, 0=不随单数变)");
+      Print("参数非法: TrailTotal_AddPerOrder 须>=0 (每多一单阈值增量, 0=不随单数变)");
       return(INIT_PARAMETERS_INCORRECT);
      }
 
-   if(InpTrailEnable && (InpTrailKeepPct <= 0 || InpTrailKeepPct >= 100 || InpTPPips <= 0))
+   if(TrailTotal_Enable && (TrailTotal_KeepPct <= 0 || TrailTotal_KeepPct >= 100 || TpThreshold_BasePips <= 0))
      {
-      Print("参数非法: 移动止损需 InpTPPips>0 且 回撤到% (InpTrailKeepPct) 在 (0,100) 之间");
+      Print("参数非法: 移动止损需 TpThreshold_BasePips>0 且 回撤到% (TrailTotal_KeepPct) 在 (0,100) 之间");
       return(INIT_PARAMETERS_INCORRECT);
      }
 
    // 上下界必须人工填且上界 > 下界
-   if(InpUpperPrice <= 0 || InpLowerPrice <= 0)
+   if(TradeGrid_UpperPrice <= 0 || TradeGrid_LowerPrice <= 0)
      {
       Print("参数非法: 上下边界必须手动填具体价格(>0)");
       return(INIT_PARAMETERS_INCORRECT);
      }
-   if(InpUpperPrice <= InpLowerPrice)
+   if(TradeGrid_UpperPrice <= TradeGrid_LowerPrice)
      {
-      PrintFormat("参数非法: 上界(%.5f) 必须大于 下界(%.5f)", InpUpperPrice, InpLowerPrice);
+      PrintFormat("参数非法: 上界(%.5f) 必须大于 下界(%.5f)", TradeGrid_UpperPrice, TradeGrid_LowerPrice);
       return(INIT_PARAMETERS_INCORRECT);
      }
 
    // 越界距离用 ATR: 创建 ATR 句柄
-   g_boAtrHandle = iATR(_Symbol, _Period, InpBreakoutAtrPeriod);
+   g_boAtrHandle = iATR(_Symbol, _Period, BreakoutDist_AtrPeriod);
    if(g_boAtrHandle == INVALID_HANDLE){ Print("创建 ATR 句柄失败"); return(INIT_FAILED); }
 
-   g_upper  = InpUpperPrice;
-   g_lower  = InpLowerPrice;
+   g_upper  = TradeGrid_UpperPrice;
+   g_lower  = TradeGrid_LowerPrice;
    g_center = (g_upper + g_lower) / 2.0;
-   g_grid   = (g_upper - g_lower) / InpGridCount;   // 格距 = 区间宽 / 网格数量
+   g_grid   = (g_upper - g_lower) / TradeGrid_GridCount;   // 格距 = 区间宽 / 网格数量
 
    DrawLines();
    DrawInfoPanelTrail();   // 顶行参数运行期不变, 只在 OnInit 画一次
 
    PrintFormat("GridTrader v3 启动. 上界=%.5f 中线=%.5f 下界=%.5f 网格数=%d 格距=%.5f",
-               g_upper, g_center, g_lower, InpGridCount, g_grid);
+               g_upper, g_center, g_lower, TradeGrid_GridCount, g_grid);
    return(INIT_SUCCEEDED);
   }
 
@@ -214,7 +216,7 @@ double OnTester()
 //+------------------------------------------------------------------+
 void DrawLines()
   {
-   if(!InpShowGraphics) return;
+   if(!DrawLines_ShowGraphics) return;
 
    // 网格线 (淡灰点线): 先画, 放背景层, 让边界/中线浮在其上不被覆盖
    double grid = g_grid;
@@ -309,7 +311,7 @@ void DrawPriceLabel(const string nm, const double price, const string text, cons
 //+------------------------------------------------------------------+
 void DrawVLine(const color clr, const int width=1, const bool back=true)
   {
-   if(!InpShowGraphics) return;
+   if(!DrawLines_ShowGraphics) return;
    datetime t = iTime(_Symbol, _Period, 0);   // 当前 K 线时间
    if(t <= 0) t = TimeCurrent();
    string nm = "GT_v_" + IntegerToString((long)t);
@@ -322,6 +324,40 @@ void DrawVLine(const color clr, const int width=1, const bool back=true)
    ObjectSetInteger(0, nm, OBJPROP_WIDTH,      width);
    ObjectSetInteger(0, nm, OBJPROP_BACK,       back);
    ObjectSetInteger(0, nm, OBJPROP_SELECTABLE, false);
+  }
+
+//+------------------------------------------------------------------+
+//| 在当前 K 线位置画平仓收益文字标签 (pips, 正绿负红)。             |
+//|  同竖线配合: 止盈=绿, 移动止损/越界止损=视盈亏着色。             |
+//|  同一 bar 多次平仓按 0.3 格向上错位, 互不遮挡。                  |
+//+------------------------------------------------------------------+
+void DrawCloseLabel(const string tag, const double value, const double price, const bool inPips = true)
+  {
+   if(!DrawLines_ShowGraphics) return;
+   datetime t = iTime(_Symbol, _Period, 0);
+   if(t <= 0) t = TimeCurrent();
+   string baseNm = "GT_pips_" + IntegerToString((long)t);
+   string nm = baseNm;
+   int stack = 0;
+   while(ObjectFind(0, nm) >= 0)
+     {
+      stack++;
+      nm = baseNm + "_" + IntegerToString(stack);
+     }
+   double adjPrice = price + stack * g_grid * 0.3;
+   string sign = (value >= 0) ? "+" : "";
+   string text = inPips
+                 ? StringFormat("%s %s%.0fpips", tag, sign, value)
+                 : StringFormat("%s %s%.2f",     tag, sign, value);
+   color  clr  = (value >= 0) ? clrLime : clrTomato;
+   ObjectCreate(0, nm, OBJ_TEXT, 0, t, adjPrice);
+   ObjectSetString (0, nm, OBJPROP_TEXT,       text);
+   ObjectSetInteger(0, nm, OBJPROP_COLOR,      clr);
+   ObjectSetInteger(0, nm, OBJPROP_FONTSIZE,   9);
+   ObjectSetInteger(0, nm, OBJPROP_ANCHOR,     ANCHOR_LEFT_LOWER);
+   ObjectSetInteger(0, nm, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, nm, OBJPROP_BACK,       false);
+   ChartRedraw(0);
   }
 
 //+------------------------------------------------------------------+
@@ -346,17 +382,17 @@ void InfoLabel(const string nm, const int y, const string text, const color clr)
 //+------------------------------------------------------------------+
 void DrawInfoPanelTrail()
   {
-   if(!InpShowGraphics) return;
-   string addTxt   = (InpTPAddPerOrder != 0) ? StringFormat("(+%d/单)", InpTPAddPerOrder) : "";
-   string trailTxt = InpTrailEnable
-                     ? StringFormat("移动止损: 开   启动 %d%s / 回撤到 %d%%", InpTPPips, addTxt, InpTrailKeepPct)
-                     : StringFormat("移动止损: 关   (总体止盈 %d%s 总pips)", InpTPPips, addTxt);
-   InfoLabel("GT_info_trail", 56, trailTxt, InpTrailEnable ? clrGold : clrSilver);
+   if(!DrawLines_ShowGraphics) return;
+   string addTxt   = (TrailTotal_AddPerOrder != 0) ? StringFormat("(+%d%%/单,上限90%%)", TrailTotal_AddPerOrder) : "";
+   string trailTxt = TrailTotal_Enable
+                     ? StringFormat("移动止损: 开   启动 %d / 回撤到 %d%%%s", TpThreshold_BasePips, TrailTotal_KeepPct, addTxt)
+                     : StringFormat("移动止损: 关   (总体止盈 %d 总pips)", TpThreshold_BasePips);
+   InfoLabel("GT_info_trail", 56, trailTxt, TrailTotal_Enable ? clrGold : clrSilver);
   }
 
 void DrawInfoPanel()
   {
-   if(!InpShowGraphics) return;
+   if(!DrawLines_ShowGraphics) return;
    int    buyN  = CountSide(POSITION_TYPE_BUY);
    int    sellN = CountSide(POSITION_TYPE_SELL);
 
@@ -375,16 +411,17 @@ void DrawInfoPanel()
    else
      {
       double buyPips   = TotalPipsByType(POSITION_TYPE_BUY);
-      double keepRatio = InpTrailKeepPct / 100.0;
       buyTxt = StringFormat("买 %+.1f 总pips (%d单)", buyPips, buyN);
-      if(InpTrailEnable)
+      if(TrailTotal_Enable)
         {
-         int    startB  = TpThreshold(buyN);
+         int    startB  = TpThreshold();
+         double keepB   = EffectiveKeepRatio(buyN);
          bool   armedB  = (g_trailPeakBuy >= startB);
-         double targetB = (armedB ? g_trailPeakBuy : startB) * keepRatio;
+         double targetB = (armedB ? g_trailPeakBuy : startB) * keepB;
+         int    pctB    = (int)MathRound(keepB * 100);
          buyTxt += armedB
-                   ? StringFormat("  峰值%.1f 止损目标%.1f (已启动)", g_trailPeakBuy, targetB)
-                   : StringFormat("  峰值%.1f→启动%d 止损目标%.1f (待启动)", g_trailPeakBuy, startB, targetB);
+                   ? StringFormat("  峰值%.1f 止损目标%.1f(%d%%) (已启动)", g_trailPeakBuy, targetB, pctB)
+                   : StringFormat("  峰值%.1f→启动%d 止损目标%.1f(%d%%) (待启动)", g_trailPeakBuy, startB, targetB, pctB);
         }
       buyClr = (buyPips >= 0 ? clrLime : clrTomato);
      }
@@ -406,16 +443,17 @@ void DrawInfoPanel()
    else
      {
       double sellPips  = TotalPipsByType(POSITION_TYPE_SELL);
-      double keepRatio = InpTrailKeepPct / 100.0;
       sellTxt = StringFormat("卖 %+.1f 总pips (%d单)", sellPips, sellN);
-      if(InpTrailEnable)
+      if(TrailTotal_Enable)
         {
-         int    startS  = TpThreshold(sellN);
+         int    startS  = TpThreshold();
+         double keepS   = EffectiveKeepRatio(sellN);
          bool   armedS  = (g_trailPeakSell >= startS);
-         double targetS = (armedS ? g_trailPeakSell : startS) * keepRatio;
+         double targetS = (armedS ? g_trailPeakSell : startS) * keepS;
+         int    pctS    = (int)MathRound(keepS * 100);
          sellTxt += armedS
-                    ? StringFormat("  峰值%.1f 止损目标%.1f (已启动)", g_trailPeakSell, targetS)
-                    : StringFormat("  峰值%.1f→启动%d 止损目标%.1f (待启动)", g_trailPeakSell, startS, targetS);
+                    ? StringFormat("  峰值%.1f 止损目标%.1f(%d%%) (已启动)", g_trailPeakSell, targetS, pctS)
+                    : StringFormat("  峰值%.1f→启动%d 止损目标%.1f(%d%%) (待启动)", g_trailPeakSell, startS, targetS, pctS);
         }
       sellClr = (sellPips >= 0 ? clrLime : clrTomato);
      }
@@ -433,10 +471,10 @@ void DrawInfoPanel()
 void OnTick()
   {
    // 点差过滤
-   if(InpMaxSpreadPoints > 0)
+   if(OnTick_MaxSpread > 0)
      {
       long spread = SymbolInfoInteger(_Symbol, SYMBOL_SPREAD);
-      if(spread > InpMaxSpreadPoints)
+      if(spread > OnTick_MaxSpread)
          return;
      }
 
@@ -448,7 +486,7 @@ void OnTick()
    // OnInit 时测试器拿不到有效时间, 故在此刷新。边界/中线/网格线是 OBJ_HLINE 不随时间动。
    static datetime lblBar = 0;
    datetime curBar = iTime(_Symbol, _Period, 0);
-   if(InpShowGraphics && curBar > 0 && curBar != lblBar)
+   if(DrawLines_ShowGraphics && curBar > 0 && curBar != lblBar)
      {
       lblBar = curBar;
       ObjectMove(0, "GT_upper_lbl",  0, curBar, g_upper);
@@ -468,25 +506,31 @@ void OnTick()
    if(HandleBreakout())
       return;
 
+   // 超单亏损保护: 某方向持仓超标且当前浮亏则平该方向
+   if(CheckLossCut())
+      return;
+
    // 1) 方向总体止盈(未开移动止损时生效): 各组合计浮盈达标只平该组, 本 tick 不再开单
-   if(!InpTrailEnable && InpTPPips > 0)
+   if(!TrailTotal_Enable && TpThreshold_BasePips > 0)
      {
       bool closedAny = false;
 
       int    buyN    = CountSide(POSITION_TYPE_BUY);
       double buyPips = TotalPipsByType(POSITION_TYPE_BUY);
-      if(buyN > 0 && buyPips >= TpThreshold(buyN))
+      if(buyN > 0 && buyPips >= TpThreshold_BasePips)
         {
-         PrintFormat("买组止盈触发: 买组总体盈利 %.1f 总pips >= %d(%d单), 平掉所有买单", buyPips, TpThreshold(buyN), buyN);
+         PrintFormat("买组止盈触发: 买组总体盈利 %.1f 总pips >= %d, 平掉所有买单", buyPips, TpThreshold_BasePips);
+         DrawCloseLabel("买TP", buyPips, SymbolInfoDouble(_Symbol, SYMBOL_BID));
          CloseSide(POSITION_TYPE_BUY);
          closedAny = true;
         }
 
       int    sellN    = CountSide(POSITION_TYPE_SELL);
       double sellPips = TotalPipsByType(POSITION_TYPE_SELL);
-      if(sellN > 0 && sellPips >= TpThreshold(sellN))
+      if(sellN > 0 && sellPips >= TpThreshold_BasePips)
         {
-         PrintFormat("卖组止盈触发: 卖组总体盈利 %.1f 总pips >= %d(%d单), 平掉所有卖单", sellPips, TpThreshold(sellN), sellN);
+         PrintFormat("卖组止盈触发: 卖组总体盈利 %.1f 总pips >= %d, 平掉所有卖单", sellPips, TpThreshold_BasePips);
+         DrawCloseLabel("卖TP", sellPips, SymbolInfoDouble(_Symbol, SYMBOL_ASK));
          CloseSide(POSITION_TYPE_SELL);
          closedAny = true;
         }
@@ -495,7 +539,7 @@ void OnTick()
      }
 
    // 1b) 移动止损(ON 时替代总体止盈): 按方向整组合计浮盈跟踪, 回撤触及平该方向
-   if(InpTrailEnable && TrailTotal())
+   if(TrailTotal_Enable && TrailTotal())
       return;                       // 整组移动止损平仓, 本 tick 不再开单
 
    // 2) 区间内开网格单
@@ -503,16 +547,78 @@ void OnTick()
   }
 
 //+------------------------------------------------------------------+
-//| 越界距离: InpBreakoutAtr × 当前 ATR, 返回价格距离。            |
+//| 某方向当前浮盈(账户货币): Σ(pos.Profit + pos.Swap), 仅本 magic。 |
+//+------------------------------------------------------------------+
+double FloatingPnL(const ENUM_POSITION_TYPE type)
+  {
+   double sum = 0.0;
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+     {
+      if(!pos.SelectByIndex(i))        continue;
+      if(pos.Symbol() != _Symbol)      continue;
+      if(pos.Magic()  != CTrade_Magic) continue;
+      if(pos.PositionType() != type)   continue;
+      sum += pos.Profit() + pos.Swap();
+     }
+   return(sum);
+  }
+
+//+------------------------------------------------------------------+
+//| 超单亏损保护: 买/卖各自独立检查。                                 |
+//|  某方向持仓 > LossCut_MinOrders 且该方向当前浮盈 < 0 -> 平该方向。|
+//|  返回 true 表示本 tick 有平仓(不再止盈/开单)。                   |
+//+------------------------------------------------------------------+
+bool CheckLossCut()
+  {
+   if(LossCut_MinOrders <= 0) return(false);
+   bool closed = false;
+
+   int buyN = CountSide(POSITION_TYPE_BUY);
+   if(buyN > LossCut_MinOrders)
+     {
+      double pnl = FloatingPnL(POSITION_TYPE_BUY);
+      if(pnl < 0)
+        {
+         double pipsBuy = TotalPipsByType(POSITION_TYPE_BUY);
+         PrintFormat("超单亏损保护(买): 买单 %d单 > 阈值 %d单, 浮盈=%.2f (%.1f总pips), 平买组",
+                     buyN, LossCut_MinOrders, pnl, pipsBuy);
+         DrawVLine(clrOrangeRed, 2, false);
+         DrawCloseLabel("买超单止损", pipsBuy, SymbolInfoDouble(_Symbol, SYMBOL_BID));
+         CloseSide(POSITION_TYPE_BUY);
+         closed = true;
+        }
+     }
+
+   int sellN = CountSide(POSITION_TYPE_SELL);
+   if(sellN > LossCut_MinOrders)
+     {
+      double pnl = FloatingPnL(POSITION_TYPE_SELL);
+      if(pnl < 0)
+        {
+         double pipsSell = TotalPipsByType(POSITION_TYPE_SELL);
+         PrintFormat("超单亏损保护(卖): 卖单 %d单 > 阈值 %d单, 浮盈=%.2f (%.1f总pips), 平卖组",
+                     sellN, LossCut_MinOrders, pnl, pipsSell);
+         DrawVLine(clrOrangeRed, 2, false);
+         DrawCloseLabel("卖超单止损", pipsSell, SymbolInfoDouble(_Symbol, SYMBOL_ASK));
+         CloseSide(POSITION_TYPE_SELL);
+         closed = true;
+        }
+     }
+
+   return(closed);
+  }
+
+//+------------------------------------------------------------------+
+//| 越界距离: BreakoutDist_AtrMult × 当前 ATR, 返回价格距离。            |
 //|  ATR 读不到或倍数<=0 则返回 0(收盘一碰边界即触发)。           |
 //+------------------------------------------------------------------+
 double BreakoutDist()
   {
-   if(InpBreakoutAtr <= 0) return(0.0);
+   if(BreakoutDist_AtrMult <= 0) return(0.0);
    double atr[];
    if(g_boAtrHandle == INVALID_HANDLE) return(0.0);
    if(CopyBuffer(g_boAtrHandle, 0, 1, 1, atr) < 1 || atr[0] <= 0) return(0.0);
-   return(InpBreakoutAtr * atr[0]);
+   return(BreakoutDist_AtrMult * atr[0]);
   }
 
 //+------------------------------------------------------------------+
@@ -565,16 +671,20 @@ bool HandleBreakout()
          //=== 全平止损 ===
          if(out && !g_outOfRange)
            {
+            double brkBuyPips  = TotalPipsByType(POSITION_TYPE_BUY);
+            double brkSellPips = TotalPipsByType(POSITION_TYPE_SELL);
+            double brkTotal    = brkBuyPips + brkSellPips;
             g_outOfRange = true;
             PrintFormat("超界全平: 上一根收盘 %.*f 超出区间 [%.*f, %.*f]",
                         g_digits, close1, g_digits, g_lower, g_digits, g_upper);
             DrawVLine(clrDodgerBlue);   // 止损: 蓝色竖线
+            DrawCloseLabel("越界止损", brkTotal, SymbolInfoDouble(_Symbol, SYMBOL_BID));
            }
          else if(backInside && g_outOfRange)
            {
             g_outOfRange = false;
             PrintFormat("回到区间内侧(缓冲%.1f×ATR), 恢复交易: 上一根收盘 %.*f",
-                        InpBreakoutAtr, g_digits, close1);
+                        BreakoutDist_AtrMult, g_digits, close1);
            }
         }
      }
@@ -614,16 +724,16 @@ void TradeGrid(const double grid)
 
    // 第一单须先触碰裸边界(空仓时): 空碰上界武装卖、多碰下界武装买;
    // 空仓且价格离开边界超 release 则撤防。有持仓时(加仓)不受此限,
-   // InpFirstOrderAtEdge=false 则视为始终已武装。
+   // TradeGrid_FirstAtEdge=false 则视为始终已武装。
    if(bid >= g_upper - tol) g_sellArmed = true;
    if(ask <= g_lower + tol) g_buyArmed  = true;
    if(sellN == 0 && bid < g_upper - release) g_sellArmed = false;
    if(buyN  == 0 && ask > g_lower + release) g_buyArmed  = false;
-   bool sellAllowed = (!InpFirstOrderAtEdge || sellN > 0 || g_sellArmed);
-   bool buyAllowed  = (!InpFirstOrderAtEdge || buyN  > 0 || g_buyArmed);
+   bool sellAllowed = (!TradeGrid_FirstAtEdge || sellN > 0 || g_sellArmed);
+   bool buyAllowed  = (!TradeGrid_FirstAtEdge || buyN  > 0 || g_buyArmed);
 
    //--- 上半区: 从中线+一格向上每隔一格一条网格线, 到上界 -> 做空 ---
-   if(InpEnableSell && sellAllowed && sellInRange && g_lastSellLine == 0.0)
+   if(TradeGrid_EnableSell && sellAllowed && sellInRange && g_lastSellLine == 0.0)
      {
       for(int k = 1; ; k++)
         {
@@ -640,7 +750,7 @@ void TradeGrid(const double grid)
      }
 
    //--- 下半区: 从中线-一格向下每隔一格一条网格线, 到下界 -> 做多 ---
-   if(InpEnableBuy && buyAllowed && buyInRange && g_lastBuyLine == 0.0)
+   if(TradeGrid_EnableBuy && buyAllowed && buyInRange && g_lastBuyLine == 0.0)
      {
       for(int k = 1; ; k++)
         {
@@ -659,7 +769,7 @@ void TradeGrid(const double grid)
 
 //+------------------------------------------------------------------+
 //| 某方向(买/卖)持仓的"总体盈利 pips"(手数加权累加, 以最小手计权)。 |
-//|  Σ(单pips × 手数) / InpMinLots: 各单 pips 按手数加权后累加,        |
+//|  Σ(单pips × 手数) / LotForLine_MinLots: 各单 pips 按手数加权后累加,        |
 //|  再除以最小手归一到"最小手 pips"单位 -> 数值落在 pips 量级,        |
 //|  全是最小手时恰为各单 pips 简单相加。与真实盈利金额成正比,         |
 //|  阶梯手数时边界大单权重大。纯价差不含手续费。                     |
@@ -673,14 +783,14 @@ double TotalPipsByType(const ENUM_POSITION_TYPE type)
      {
       if(!pos.SelectByIndex(i))      continue;
       if(pos.Symbol() != _Symbol)    continue;
-      if(pos.Magic()  != InpMagic)   continue;
+      if(pos.Magic()  != CTrade_Magic)   continue;
       if(pos.PositionType() != type) continue;
       double open = pos.PriceOpen();
       double pips = (type == POSITION_TYPE_BUY) ? (bid - open) / g_pip
                                                 : (open - ask) / g_pip;
       sum += pips * pos.Volume();
      }
-   return(InpMinLots > 0.0 ? sum / InpMinLots : 0.0);
+   return(LotForLine_MinLots > 0.0 ? sum / LotForLine_MinLots : 0.0);
   }
 
 //+------------------------------------------------------------------+
@@ -693,7 +803,7 @@ bool HasOrderNear(const ENUM_POSITION_TYPE type, const double line, const double
      {
       if(!pos.SelectByIndex(i))          continue;
       if(pos.Symbol() != _Symbol)        continue;
-      if(pos.Magic()  != InpMagic)       continue;
+      if(pos.Magic()  != CTrade_Magic)       continue;
       if(pos.PositionType() != type)     continue;
 
       if(MathAbs(pos.PriceOpen() - line) < tol)
@@ -712,7 +822,7 @@ int CountSide(const ENUM_POSITION_TYPE type)
      {
       if(!pos.SelectByIndex(i))          continue;
       if(pos.Symbol() != _Symbol)        continue;
-      if(pos.Magic()  != InpMagic)       continue;
+      if(pos.Magic()  != CTrade_Magic)       continue;
       if(pos.PositionType() != type)     continue;
       c++;
      }
@@ -729,8 +839,8 @@ double LotForLine(const ENUM_POSITION_TYPE type, const double line, const double
                   ? (int)MathRound((g_upper - line) / grid)    // 上半区: 距上界的格数
                   : (int)MathRound((line - g_lower) / grid);   // 下半区: 距下界的格数
    if(distEdge < 0) distEdge = 0;
-   double lots = InpInitLots - distEdge * InpReduceLots;
-   if(lots < InpMinLots) lots = InpMinLots;
+   double lots = LotForLine_InitLots - distEdge * LotForLine_ReducePerLine;
+   if(lots < LotForLine_MinLots) lots = LotForLine_MinLots;
    return(NormalizeLots(lots));
   }
 
@@ -765,13 +875,23 @@ void ClosePosition(const ulong ticket)
   }
 
 //+------------------------------------------------------------------+
-//| 生效阈值(总pips): 基准 + (该方向单数-1)×每单增量, 随持仓单数抬高。 |
-//|  n<1 视为 1。InpTPAddPerOrder=0 时恒为基准 InpTPPips。            |
+//| 移动止损启动阈值(总pips): 固定等于基准值。                          |
 //+------------------------------------------------------------------+
-int TpThreshold(int n)
+int TpThreshold()
+  {
+   return(TpThreshold_BasePips);
+  }
+
+//+------------------------------------------------------------------+
+//| 有效回撤保留比例: 随持仓单数收紧, 上限90%。                         |
+//| keepPct + (n-1)×TrailTotal_AddPerOrder, 夹到 [keepPct, 90]。     |
+//+------------------------------------------------------------------+
+double EffectiveKeepRatio(int n)
   {
    if(n < 1) n = 1;
-   return(InpTPPips + (n - 1) * InpTPAddPerOrder);
+   int pct = TrailTotal_KeepPct + (n - 1) * TrailTotal_AddPerOrder;
+   if(pct > 90) pct = 90;
+   return(pct / 100.0);
   }
 
 //+------------------------------------------------------------------+
@@ -780,22 +900,24 @@ int TpThreshold(int n)
 //+------------------------------------------------------------------+
 bool TrailTotal()
   {
-   double keepRatio  = InpTrailKeepPct / 100.0;   // 保留比例(回撤到峰值此比例就平, 如70 -> 0.70)
-   bool   closed     = false;
+   bool closed = false;
+   int  startPips = TpThreshold();   // 启动阈值固定 = TpThreshold_BasePips
 
    // 买组
    int buyN = CountSide(POSITION_TYPE_BUY);
    if(buyN > 0)
      {
-      int    startPips = TpThreshold(buyN);   // 启动阈值随买单数抬高
+      double keepRatio = EffectiveKeepRatio(buyN);   // 单数越多回撤%越紧, 上限90%
       double p = TotalPipsByType(POSITION_TYPE_BUY);
       if(p > g_trailPeakBuy) g_trailPeakBuy = p;
       if(g_trailPeakBuy >= startPips && p <= g_trailPeakBuy * keepRatio)
         {
-         PrintFormat("买组移动止损: 峰值%.1f -> 回撤到%.1f 总pips(峰值的%d%%, 启动%d/%d单), 平掉所有买单",
-                     g_trailPeakBuy, p, InpTrailKeepPct, startPips, buyN);
+         int effPct = (int)MathRound(keepRatio * 100);
+         PrintFormat("买组移动止损: 峰值%.1f -> 回撤到%.1f 总pips(峰值的%d%%, %d单), 平掉所有买单",
+                     g_trailPeakBuy, p, effPct, buyN);
          CloseSide(POSITION_TYPE_BUY);
-         DrawVLine(p >= startPips ? clrLime : clrYellow, 2, false);  // 落袋≥启动阈值=绿, 否则黄
+         DrawVLine(p >= startPips ? clrLime : clrYellow, 2, false);
+         DrawCloseLabel("买移止", p, SymbolInfoDouble(_Symbol, SYMBOL_BID));
          g_trailPeakBuy = 0.0;
          closed = true;
         }
@@ -806,15 +928,17 @@ bool TrailTotal()
    int sellN = CountSide(POSITION_TYPE_SELL);
    if(sellN > 0)
      {
-      int    startPips = TpThreshold(sellN);  // 启动阈值随卖单数抬高
+      double keepRatio = EffectiveKeepRatio(sellN);
       double p = TotalPipsByType(POSITION_TYPE_SELL);
       if(p > g_trailPeakSell) g_trailPeakSell = p;
       if(g_trailPeakSell >= startPips && p <= g_trailPeakSell * keepRatio)
         {
-         PrintFormat("卖组移动止损: 峰值%.1f -> 回撤到%.1f 总pips(峰值的%d%%, 启动%d/%d单), 平掉所有卖单",
-                     g_trailPeakSell, p, InpTrailKeepPct, startPips, sellN);
+         int effPct = (int)MathRound(keepRatio * 100);
+         PrintFormat("卖组移动止损: 峰值%.1f -> 回撤到%.1f 总pips(峰值的%d%%, %d单), 平掉所有卖单",
+                     g_trailPeakSell, p, effPct, sellN);
          CloseSide(POSITION_TYPE_SELL);
-         DrawVLine(p >= startPips ? clrLime : clrYellow, 2, false);  // 落袋≥启动阈值=绿, 否则黄
+         DrawVLine(p >= startPips ? clrLime : clrYellow, 2, false);
+         DrawCloseLabel("卖移止", p, SymbolInfoDouble(_Symbol, SYMBOL_ASK));
          g_trailPeakSell = 0.0;
          closed = true;
         }
@@ -833,7 +957,7 @@ void CloseSide(const ENUM_POSITION_TYPE type)
      {
       if(!pos.SelectByIndex(i))      continue;
       if(pos.Symbol() != _Symbol)    continue;
-      if(pos.Magic()  != InpMagic)   continue;
+      if(pos.Magic()  != CTrade_Magic)   continue;
       if(pos.PositionType() != type) continue;
 
       ClosePosition(pos.Ticket());
@@ -849,7 +973,7 @@ void CloseAll()
      {
       if(!pos.SelectByIndex(i))          continue;
       if(pos.Symbol() != _Symbol)        continue;
-      if(pos.Magic()  != InpMagic)       continue;
+      if(pos.Magic()  != CTrade_Magic)       continue;
 
       ClosePosition(pos.Ticket());
      }
