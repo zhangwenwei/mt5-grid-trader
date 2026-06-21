@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0c1530">
+<title>恐竜PK対決</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body {
+    width:100%; height:100%; overflow:hidden; background:#0c1530;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;
+    touch-action:none; user-select:none; -webkit-user-select:none; overscroll-behavior:none;
+    color:#fff;
+  }
+  #wrap { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; }
+  canvas { display:block; touch-action:none; }
+
+  .overlay {
+    position:fixed; inset:0; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; padding:24px; text-align:center;
+    background:radial-gradient(circle at 50% 30%, rgba(20,40,90,0.75), rgba(8,14,40,0.92));
+    backdrop-filter:blur(3px); -webkit-backdrop-filter:blur(3px);
+  }
+  .overlay.hidden { display:none; }
+  h1 {
+    font-size:clamp(30px,9vw,60px); letter-spacing:2px; margin-bottom:6px;
+    background:linear-gradient(90deg,#ffd86b,#ff7a3d); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent;
+  }
+  .sub { font-size:clamp(13px,4vw,18px); opacity:.85; margin-bottom:22px; line-height:1.6; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; width:min(92vw,460px); }
+  .card {
+    background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.14);
+    border-radius:16px; padding:14px 12px 16px; cursor:pointer; transition:transform .1s, border-color .15s, background .15s;
+  }
+  .card:active { transform:scale(.96); }
+  .card.sel { border-color:#ffd86b; background:rgba(255,216,107,0.12); }
+  .card canvas { margin:0 auto 6px; display:block; }
+  .card .nm { font-size:clamp(15px,4.5vw,19px); font-weight:700; }
+  .card .ds { font-size:11px; opacity:.7; margin-top:3px; min-height:28px; }
+  .stats { margin-top:8px; font-size:10px; display:grid; grid-template-columns:auto 1fr; gap:2px 6px; align-items:center; text-align:left; }
+  .bar { height:6px; border-radius:3px; background:rgba(255,255,255,0.15); overflow:hidden; }
+  .bar > i { display:block; height:100%; background:linear-gradient(90deg,#5fd0ff,#3a8fff); }
+  .btn {
+    margin-top:24px; pointer-events:auto; cursor:pointer;
+    background:linear-gradient(90deg,#ffd86b,#ff7a3d); color:#3a2200; font-weight:800;
+    border:none; border-radius:999px; padding:15px 44px; font-size:clamp(16px,5vw,20px);
+    box-shadow:0 8px 24px rgba(255,138,61,0.4); transition:transform .1s;
+  }
+  .btn:active { transform:scale(.95); }
+  .hint { margin-top:18px; font-size:clamp(13px,4vw,17px); opacity:.85; animation:pulse 1.4s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{opacity:.4} 50%{opacity:1} }
+  .big { font-size:clamp(42px,14vw,84px); font-weight:800; line-height:1.05; }
+  .vs { font-size:clamp(20px,6vw,30px); margin:6px 0 4px; opacity:.9; }
+  .scoreline { font-size:clamp(22px,7vw,34px); font-weight:800; margin-top:10px; }
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="game"></canvas></div>
+
+<!-- タイトル / 恐竜選択 -->
+<div id="titleScreen" class="overlay">
+  <h1>恐竜PK対決</h1>
+  <div class="sub">スワイプで蹴る・スワイプで守る！<br>5本勝負で恐竜キーパーを打ち破れ。</div>
+  <div class="grid" id="dinoGrid"></div>
+  <button class="btn" id="startBtn">この恐竜で対決！</button>
+</div>
+
+<!-- ラウンド開始バナー -->
+<div id="bannerScreen" class="overlay hidden">
+  <div class="vs" id="bannerTurn"></div>
+  <div class="big" id="bannerText"></div>
+  <div class="hint" id="bannerHint"></div>
+</div>
+
+<!-- 結果 -->
+<div id="resultScreen" class="overlay hidden">
+  <div class="big" id="resultText"></div>
+  <div class="scoreline" id="resultScore"></div>
+  <button class="btn" id="againBtn">もう一度</button>
+</div>
+
+<script>
+(() => {
+"use strict";
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+let W=0, H=0, DPR=1;
+function fit() {
+  DPR = Math.min(window.devicePixelRatio||1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.style.width=W+"px"; canvas.style.height=H+"px";
+  canvas.width=Math.round(W*DPR); canvas.height=Math.round(H*DPR);
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  layout();
+}
+
+// ---- 恐竜データ（能力 1-10）----
+const DINOS = [
+  { id:"rex",   name:"ティラノ",   color:"#d84b3a", belly:"#f0b9a8", power:9, reach:7, accuracy:6, speed:5, desc:"パワー型・キックが速い" },
+  { id:"raptor",name:"ラプトル",   color:"#34b36a", belly:"#cdeccf", power:6, reach:6, accuracy:9, speed:9, desc:"俊敏・正確で反応が速い" },
+  { id:"tri",   name:"トリケラ",   color:"#3a86d8", belly:"#bcd9f2", power:7, reach:9, accuracy:7, speed:4, desc:"守備型・リーチが広い" },
+  { id:"stego", name:"ステゴ",     color:"#9b59d8", belly:"#dcc6f2", power:5, reach:8, accuracy:8, speed:6, desc:"バランス型・堅実" },
+];
+let myDino = DINOS[0];
+let oppDino = DINOS[1];
+
+// ---- 画面要素 ----
+const titleScreen=document.getElementById("titleScreen");
+const bannerScreen=document.getElementById("bannerScreen");
+const resultScreen=document.getElementById("resultScreen");
+const bannerTurn=document.getElementById("bannerTurn");
+const bannerText=document.getElementById("bannerText");
+const bannerHint=document.getElementById("bannerHint");
+const resultText=document.getElementById("resultText");
+const resultScore=document.getElementById("resultScore");
+
+// ---- フィールド座標（layoutで計算）----
+let goal={x:0,y:0,w:0,h:0}, spot={x:0,y:0}, ballR=0;
+function layout() {
+  goal.w = Math.min(W*0.80, 560);
+  goal.h = Math.max(H*0.20, goal.w*0.34);
+  goal.x = (W-goal.w)/2;
+  goal.y = H*0.14;
+  spot.x = W/2;
+  spot.y = H*0.80;
+  ballR = Math.max(10, Math.min(W,H)*0.028);
+}
+
+// ---- ゲーム状態 ----
+const PHASE={ AIM_KICK:1, KICK_FLIGHT:2, AIM_SAVE:3, SAVE_FLIGHT:4, REVEAL:5, IDLE:0 };
+let phase=PHASE.IDLE;
+let running=false;
+
+let myScore=0, oppScore=0;
+let shotIndex=0;            // 何巡目か
+let suddenDeath=false;
+// 1巡 = [あなたが蹴る, 相手が蹴る]。 0..4 が通常5本。
+let kicker="me";           // "me" or "opp"
+
+// ボール・キーパーのアニメ用
+let ball={x:0,y:0,r:0,vis:false,scale:1};
+let keeper={x:0,y:0,tx:0,ty:0,diving:false,t:0,dur:0,fromX:0,fromY:0};
+let landing={x:0,y:0};     // ボールが向かう先（ゴール面）
+let saveResult=null;       // "goal" | "save"
+let flightT=0, flightDur=0;
+let revealT=0;
+let canSave=false;         // 守備フェーズでスワイプ受付中か
+let saved=false;
+
+// スコア表示の○●
+let myMarks=[], oppMarks=[]; // "goal"/"miss"/null
+
+// 演出
+let flash=0, shake=0;
+let bannerTimer=0, bannerCb=null;
+
+// ---- 恐竜選択カードの描画 ----
+function drawDinoIcon(c, d, w, h) {
+  const g=c.getContext("2d");
+  g.clearRect(0,0,w,h);
+  g.save();
+  drawDino(g, w*0.5, h*0.66, w*0.42, d, 1, false);
+  g.restore();
+}
+
+function buildGrid() {
+  const grid=document.getElementById("dinoGrid");
+  grid.innerHTML="";
+  DINOS.forEach((d)=>{
+    const card=document.createElement("div");
+    card.className="card"+(d.id===myDino.id?" sel":"");
+    const cv=document.createElement("canvas");
+    const sz=84; cv.width=sz*2; cv.height=sz*2; cv.style.width=sz+"px"; cv.style.height=sz+"px";
+    drawDinoIcon(cv,d,sz*2,sz*2);
+    card.appendChild(cv);
+    const nm=document.createElement("div"); nm.className="nm"; nm.textContent=d.name; card.appendChild(nm);
+    const ds=document.createElement("div"); ds.className="ds"; ds.textContent=d.desc; card.appendChild(ds);
+    const st=document.createElement("div"); st.className="stats";
+    const rows=[["パワー",d.power],["リーチ",d.reach],["正確",d.accuracy],["スピード",d.speed]];
+    rows.forEach(([k,v])=>{
+      const l=document.createElement("span"); l.textContent=k; st.appendChild(l);
+      const b=document.createElement("div"); b.className="bar"; const i=document.createElement("i"); i.style.width=(v*10)+"%"; b.appendChild(i); st.appendChild(b);
+    });
+    card.appendChild(st);
+    card.addEventListener("click",()=>{
+      myDino=d;
+      [...grid.children].forEach(c=>c.classList.remove("sel"));
+      card.classList.add("sel");
+    });
+    grid.appendChild(card);
+  });
+}
+
+// ============ 恐竜の描画 ============
+// gx,gy = 足元中央, s = 基準サイズ, dir: facing — diving offset無し
+function drawDino(g, gx, gy, s, d, alpha, asKeeper) {
+  g.save();
+  g.globalAlpha=alpha;
+  g.translate(gx, gy);
+  const col=d.color, belly=d.belly;
+  // しっぽ
+  g.fillStyle=col;
+  g.beginPath();
+  g.moveTo(-s*0.2,-s*0.9);
+  g.quadraticCurveTo(-s*1.4,-s*0.7,-s*1.5,-s*0.05);
+  g.quadraticCurveTo(-s*1.2,-s*0.25,-s*0.2,-s*0.55);
+  g.closePath(); g.fill();
+  // 足
+  g.fillStyle=shade(col,-18);
+  g.fillRect(-s*0.35,-s*0.35,s*0.28,s*0.42);
+  g.fillRect(s*0.12,-s*0.35,s*0.28,s*0.42);
+  // 体
+  g.fillStyle=col;
+  g.beginPath();
+  g.ellipse(0,-s*0.85,s*0.62,s*0.7,0,0,Math.PI*2);
+  g.fill();
+  // お腹
+  g.fillStyle=belly;
+  g.beginPath();
+  g.ellipse(s*0.08,-s*0.72,s*0.36,s*0.5,0,0,Math.PI*2);
+  g.fill();
+  // 種別の背びれ/角
+  g.fillStyle=shade(col,-10);
+  if (d.id==="stego") {
+    for(let i=0;i<4;i++){ const px=-s*0.45+i*s*0.32;
+      g.beginPath(); g.moveTo(px,-s*1.45); g.lineTo(px+s*0.16,-s*1.75); g.lineTo(px+s*0.32,-s*1.45); g.closePath(); g.fill(); }
+  } else if (d.id==="tri") {
+    g.beginPath(); g.moveTo(s*0.5,-s*1.55); g.lineTo(s*0.95,-s*2.0); g.lineTo(s*0.62,-s*1.45); g.closePath(); g.fill();
+  }
+  // 頭
+  g.fillStyle=col;
+  g.beginPath();
+  g.ellipse(s*0.5,-s*1.45,s*0.5,s*0.45,0,0,Math.PI*2);
+  g.fill();
+  // 口/あご
+  if (d.id==="rex") {
+    g.fillStyle=col;
+    g.beginPath(); g.moveTo(s*0.55,-s*1.4); g.lineTo(s*1.15,-s*1.3); g.lineTo(s*0.95,-s*1.1); g.lineTo(s*0.55,-s*1.18); g.closePath(); g.fill();
+    g.fillStyle="#fff";
+    for(let i=0;i<3;i++){ g.beginPath(); g.moveTo(s*0.7+i*s*0.13,-s*1.22); g.lineTo(s*0.76+i*s*0.13,-s*1.34); g.lineTo(s*0.82+i*s*0.13,-s*1.22); g.closePath(); g.fill(); }
+  } else if (d.id==="tri") {
+    g.fillStyle=shade(col,-10);
+    g.beginPath(); g.moveTo(s*0.85,-s*1.55); g.lineTo(s*1.2,-s*1.7); g.lineTo(s*0.9,-s*1.4); g.closePath(); g.fill();
+  }
+  // 目
+  g.fillStyle="#fff";
+  g.beginPath(); g.arc(s*0.62,-s*1.6,s*0.16,0,Math.PI*2); g.fill();
+  g.fillStyle="#1a1a1a";
+  g.beginPath(); g.arc(s*0.68,-s*1.6,s*0.08,0,Math.PI*2); g.fill();
+  g.restore();
+}
+function shade(hex,amt){
+  const n=parseInt(hex.slice(1),16); let r=(n>>16)+amt,gn=((n>>8)&255)+amt,b=(n&255)+amt;
+  r=Math.max(0,Math.min(255,r)); gn=Math.max(0,Math.min(255,gn)); b=Math.max(0,Math.min(255,b));
+  return "#"+((1<<24)+(r<<16)+(gn<<8)+b).toString(16).slice(1);
+}
+
+// ============ フィールド描画 ============
+function drawField() {
+  // 空
+  const sky=ctx.createLinearGradient(0,0,0,H);
+  sky.addColorStop(0,"#1d3a7a"); sky.addColorStop(0.5,"#3566c0"); sky.addColorStop(1,"#5b8fd6");
+  ctx.fillStyle=sky; ctx.fillRect(0,0,W,H);
+  // 芝
+  const grassTop=goal.y+goal.h*0.55;
+  const gr=ctx.createLinearGradient(0,grassTop,0,H);
+  gr.addColorStop(0,"#3aa84a"); gr.addColorStop(1,"#1f7a30");
+  ctx.fillStyle=gr; ctx.fillRect(0,grassTop,W,H-grassTop);
+  // 芝のストライプ（遠近）
+  ctx.fillStyle="rgba(255,255,255,0.05)";
+  for(let i=0;i<6;i++){
+    const t0=i/6, t1=(i+0.5)/6;
+    const y0=grassTop+(H-grassTop)*t0*t0;
+    const y1=grassTop+(H-grassTop)*t1*t1;
+    ctx.fillRect(0,y0,W,y1-y0);
+  }
+  // ゴールネット
+  drawGoal();
+  // ペナルティスポット
+  ctx.fillStyle="rgba(255,255,255,0.85)";
+  ctx.beginPath(); ctx.ellipse(spot.x,spot.y,ballR*0.5,ballR*0.25,0,0,Math.PI*2); ctx.fill();
+}
+
+function drawGoal() {
+  const {x,y,w,h}=goal;
+  const post=Math.max(6,w*0.022);
+  // ネット
+  ctx.save();
+  ctx.beginPath(); ctx.rect(x,y,w,h); ctx.clip();
+  ctx.strokeStyle="rgba(255,255,255,0.30)"; ctx.lineWidth=1;
+  const step=Math.max(14,w*0.045);
+  for(let gx=x; gx<=x+w; gx+=step){ ctx.beginPath(); ctx.moveTo(gx,y); ctx.lineTo(gx,y+h); ctx.stroke(); }
+  for(let gy=y; gy<=y+h; gy+=step){ ctx.beginPath(); ctx.moveTo(x,gy); ctx.lineTo(x+w,gy); ctx.stroke(); }
+  ctx.restore();
+  // 枠
+  ctx.fillStyle="#f2f5ff";
+  ctx.fillRect(x-post,y-post,w+post*2,post);          // 上
+  ctx.fillRect(x-post,y,post,h);                       // 左
+  ctx.fillRect(x+w,y,post,h);                          // 右
+}
+
+// ============ ボール ============
+function drawBall(bx,by,r) {
+  ctx.save();
+  ctx.translate(bx,by);
+  ctx.fillStyle="#fff";
+  ctx.beginPath(); ctx.arc(0,0,r,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle="#222";
+  ctx.beginPath(); ctx.arc(0,0,r*0.32,0,Math.PI*2); ctx.fill();
+  for(let i=0;i<5;i++){
+    const a=i/5*Math.PI*2-Math.PI/2;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(a)*r*0.32,Math.sin(a)*r*0.32);
+    ctx.lineTo(Math.cos(a-0.35)*r*0.9,Math.sin(a-0.35)*r*0.9);
+    ctx.lineTo(Math.cos(a+0.35)*r*0.9,Math.sin(a+0.35)*r*0.9);
+    ctx.closePath(); ctx.fillStyle="#222"; ctx.fill();
+  }
+  ctx.strokeStyle="rgba(0,0,0,0.25)"; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.arc(0,0,r,0,Math.PI*2); ctx.stroke();
+  ctx.restore();
+}
+
+// ============ ガイド矢印（蹴る/守る時）============
+let drag={active:false,sx:0,sy:0,cx:0,cy:0};
+function drawAimGuide() {
+  if(!drag.active) return;
+  const ox = (phase===PHASE.AIM_KICK)? spot.x : keeper.x;
+  const oy = (phase===PHASE.AIM_KICK)? spot.y : keeper.y;
+  let dx=drag.cx-drag.sx, dy=drag.cy-drag.sy;
+  const len=Math.hypot(dx,dy);
+  if(len<6) return;
+  ctx.save();
+  ctx.strokeStyle="rgba(255,216,107,0.9)";
+  ctx.lineWidth=Math.max(4,ballR*0.4);
+  ctx.lineCap="round";
+  ctx.setLineDash([ballR*0.6, ballR*0.5]);
+  ctx.beginPath(); ctx.moveTo(ox,oy); ctx.lineTo(ox+dx, oy+dy); ctx.stroke();
+  ctx.setLineDash([]);
+  // 矢じり
+  const a=Math.atan2(dy,dx);
+  const hx=ox+dx, hy=oy+dy, hs=ballR*1.1;
+  ctx.fillStyle="rgba(255,216,107,0.95)";
+  ctx.beginPath();
+  ctx.moveTo(hx,hy);
+  ctx.lineTo(hx-Math.cos(a-0.4)*hs, hy-Math.sin(a-0.4)*hs);
+  ctx.lineTo(hx-Math.cos(a+0.4)*hs, hy-Math.sin(a+0.4)*hs);
+  ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+
+// ============ HUD ============
+function drawHUD() {
+  ctx.save();
+  ctx.textAlign="center"; ctx.textBaseline="middle";
+  // 上部スコアバー
+  const barY=Math.max(26, H*0.045);
+  ctx.font=`700 ${Math.max(16,W*0.045)}px sans-serif`;
+  ctx.fillStyle="#ffd86b";
+  ctx.fillText(`${myDino.name} ${myScore} - ${oppScore} ${oppDino.name}`, W/2, barY);
+  // マーク（○ゴール / ✕ミス）
+  const n=Math.max(5, myMarks.length, oppMarks.length);
+  const mr=Math.max(6,W*0.016);
+  const gapx=mr*2.6;
+  const totalW=(n-1)*gapx;
+  const drawMarks=(arr,cy)=>{
+    for(let i=0;i<n;i++){
+      const cx=W/2 - totalW/2 + i*gapx;
+      const v=arr[i];
+      ctx.beginPath(); ctx.arc(cx,cy,mr,0,Math.PI*2);
+      if(v==="goal"){ ctx.fillStyle="#5fe07a"; ctx.fill(); }
+      else if(v==="miss"){ ctx.fillStyle="#e05a5a"; ctx.fill();
+        ctx.strokeStyle="#fff"; ctx.lineWidth=mr*0.4;
+        ctx.beginPath(); ctx.moveTo(cx-mr*0.4,cy-mr*0.4); ctx.lineTo(cx+mr*0.4,cy+mr*0.4);
+        ctx.moveTo(cx+mr*0.4,cy-mr*0.4); ctx.lineTo(cx-mr*0.4,cy+mr*0.4); ctx.stroke();
+      } else { ctx.strokeStyle="rgba(255,255,255,0.4)"; ctx.lineWidth=2; ctx.stroke(); }
+    }
+  };
+  drawMarks(myMarks, barY+mr*3.0);
+  drawMarks(oppMarks, barY+mr*5.6);
+  ctx.restore();
+
+  // 操作インジケータ
+  if(phase===PHASE.AIM_KICK){ hudHint("スワイプでシュート！ (長く=強く・上で高く)"); }
+  else if(phase===PHASE.AIM_SAVE && canSave){ hudHint("飛ぶ方向にスワイプ！"); }
+}
+function hudHint(txt){
+  ctx.save();
+  ctx.textAlign="center"; ctx.font=`600 ${Math.max(14,W*0.038)}px sans-serif`;
+  const y=H*0.93;
+  ctx.fillStyle="rgba(0,0,0,0.35)";
+  const tw=ctx.measureText(txt).width;
+  ctx.fillRect(W/2-tw/2-14,y-16,tw+28,32);
+  ctx.fillStyle="#fff"; ctx.textBaseline="middle";
+  ctx.fillText(txt,W/2,y);
+  ctx.restore();
+}
+
+// ============ メインループ ============
+let last=0;
+function loop(t){
+  if(!last) last=t;
+  let dt=(t-last)/1000; last=t; if(dt>0.05) dt=0.05;
+  update(dt);
+  render();
+  requestAnimationFrame(loop);
+}
+
+function update(dt){
+  if(flash>0) flash=Math.max(0,flash-dt*2.5);
+  if(shake>0) shake=Math.max(0,shake-dt*40);
+
+  if(phase===PHASE.KICK_FLIGHT || phase===PHASE.SAVE_FLIGHT){
+    flightT+=dt;
+    let p=Math.min(1,flightT/flightDur);
+    const ease=p; // 等速気味
+    ball.x = lerp(spot.x, landing.x, ease);
+    ball.y = lerp(spot.y, landing.y, ease);
+    ball.scale = lerp(1, 0.55, ease); // 遠ざかって小さく
+    // キーパーのダイブ補間
+    if(keeper.diving){
+      keeper.t+=dt; const kp=Math.min(1,keeper.t/keeper.dur);
+      const ke=1-Math.pow(1-kp,2);
+      keeper.x=lerp(keeper.fromX,keeper.tx,ke);
+      keeper.y=lerp(keeper.fromY,keeper.ty,ke);
+    }
+    if(p>=1){
+      ball.x=landing.x; ball.y=landing.y;
+      resolveShot();
+    }
+  } else if(phase===PHASE.REVEAL){
+    revealT-=dt;
+    if(keeper.diving){
+      keeper.t+=dt; const kp=Math.min(1,keeper.t/keeper.dur);
+      const ke=1-Math.pow(1-kp,2);
+      keeper.x=lerp(keeper.fromX,keeper.tx,ke);
+      keeper.y=lerp(keeper.fromY,keeper.ty,ke);
+    }
+    if(revealT<=0) afterReveal();
+  }
+
+  if(bannerTimer>0){ bannerTimer-=dt; if(bannerTimer<=0 && bannerCb){ const cb=bannerCb; bannerCb=null; cb(); } }
+}
+
+function render(){
+  ctx.save();
+  if(shake>0){ ctx.translate((Math.random()-0.5)*shake,(Math.random()-0.5)*shake); }
+  ctx.clearRect(-40,-40,W+80,H+80);
+  drawField();
+
+  // キーパー恐竜（ゴール内）
+  const kd = (kicker==="me")? oppDino : myDino;
+  drawDino(ctx, keeper.x, keeper.y, ballR*1.9, kd, 1, true);
+
+  // ボール
+  if(ball.vis) drawBall(ball.x, ball.y, ball.r*ball.scale);
+
+  // 蹴る恐竜（スポット付近・AIM_KICK / KICK_FLIGHT のとき）
+  if((phase===PHASE.AIM_KICK || phase===PHASE.KICK_FLIGHT)){
+    const sd = (kicker==="me")? myDino : oppDino;
+    drawDino(ctx, spot.x - ballR*2.4, spot.y+ballR*0.3, ballR*1.7, sd, 1, false);
+  }
+
+  drawAimGuide();
+  drawHUD();
+
+  // 判定フラッシュ
+  if(flash>0 && saveResult){
+    ctx.save();
+    ctx.globalAlpha=Math.min(0.85,flash);
+    ctx.textAlign="center"; ctx.textBaseline="middle";
+    ctx.font=`900 ${Math.max(46,W*0.16)}px sans-serif`;
+    const goalForMe = (kicker==="me" && saveResult==="goal") || (kicker==="opp" && saveResult==="save");
+    ctx.fillStyle = saveResult==="goal" ? "#ffe04a" : "#7fd0ff";
+    ctx.lineWidth=Math.max(4,W*0.012); ctx.strokeStyle="rgba(0,0,0,0.5)";
+    const txt = saveResult==="goal" ? "GOAL!" : "SAVE!";
+    ctx.strokeText(txt,W/2,H*0.45); ctx.fillText(txt,W/2,H*0.45);
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+function lerp(a,b,t){ return a+(b-a)*t; }
+function rand(a,b){ return a+Math.random()*(b-a); }
+function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
+
+// ============ ラウンド制御 ============
+function startMatch(){
+  // 相手はあなた以外からランダム
+  const others=DINOS.filter(d=>d.id!==myDino.id);
+  oppDino=others[Math.floor(Math.random()*others.length)];
+  myScore=0; oppScore=0; shotIndex=0; suddenDeath=false;
+  myMarks=[]; oppMarks=[];
+  running=true;
+  titleScreen.classList.add("hidden");
+  resultScreen.classList.add("hidden");
+  centerKeeper(true);
+  ball.vis=false;
+  nextShot();
+}
+
+function centerKeeper(instant){
+  keeper.x=goal.x+goal.w/2; keeper.y=goal.y+goal.h*0.8;
+  keeper.diving=false; keeper.t=0;
+}
+
+function nextShot(){
+  const round=Math.floor(shotIndex/2);
+  const half=shotIndex%2; // 0=あなた蹴る, 1=相手蹴る
+  // 5本ずつ終わった、またはサドンデスの1巡が終わった時点（half===0）で決着判定
+  if(shotIndex>=10 && half===0){
+    if(myScore!==oppScore){ finish(); return; }
+    suddenDeath=true; // 同点ならサドンデス継続
+  }
+  // 早期決着チェック（通常5本の途中のみ）
+  if(!suddenDeath && checkEarlyFinish(round,half)){ return; }
+
+  kicker = (half===0)? "me":"opp";
+  centerKeeper(true);
+  ball.vis=false;
+  drag.active=false;
+
+  if(kicker==="me"){
+    showBanner("あなたのキック", "GO!", "スワイプでシュート！", ()=>{
+      phase=PHASE.AIM_KICK;
+      ball.x=spot.x; ball.y=spot.y; ball.r=ballR; ball.scale=1; ball.vis=true;
+    });
+  } else {
+    showBanner("相手のキック", "守れ！", "飛ぶ方向にスワイプ！", ()=>{
+      setupOppKick();
+    });
+  }
+}
+
+// 通常5本の途中で数学的に決着がついたら終了
+function checkEarlyFinish(round, half){
+  const myTaken=countTaken("me"), oppTaken=countTaken("opp");
+  const myRemain=5-myTaken, oppRemain=5-oppTaken;
+  if(half===0){ // これからあなたが蹴る前
+    if(myScore>oppScore+oppRemain){ finish(); return true; }
+    if(oppScore>myScore+myRemain){ finish(); return true; }
+  } else { // これから相手が蹴る前
+    if(myScore>oppScore+oppRemain){ finish(); return true; }
+    if(oppScore>myScore+myRemain){ finish(); return true; }
+  }
+  return false;
+}
+function countTaken(who){ return who==="me"?myMarks.filter(v=>v!=null).length:oppMarks.filter(v=>v!=null).length; }
+
+// ---- あなたが蹴る：スワイプ確定 ----
+function commitKick(dx,dy){
+  phase=PHASE.KICK_FLIGHT;
+  const aim = swipeToLanding(dx,dy, myDino);
+  landing.x=aim.x; landing.y=aim.y;
+  // 飛行時間（パワー高=速い）
+  flightDur = clamp(0.62 - aim.power*0.18 - myDino.power*0.012, 0.30, 0.7);
+  flightT=0;
+  ball.vis=true;
+  // CPUキーパー（=oppDino）のセーブ判定をダイブで表現
+  cpuKeeperDive(oppDino);
+}
+
+function swipeToLanding(dx,dy,dino){
+  // 横: スワイプ横量 → ゴール内X
+  const kx=(goal.w*0.55)/(W*0.20);
+  let lx = spot.x + dx*kx;
+  // 強さ: スワイプ長 → 高さ(上ほど上隅) & パワー
+  const len=Math.hypot(dx,dy);
+  const power=clamp(len/(H*0.26),0.15,1);
+  let ly = goal.y + goal.h*(1-power*0.92);
+  // 正確さによるブレ
+  const err=(10-dino.accuracy)/10;
+  lx += rand(-1,1)*goal.w*0.16*err;
+  ly += rand(-1,1)*goal.h*0.18*err;
+  lx=clamp(lx, goal.x+ballR*0.6, goal.x+goal.w-ballR*0.6);
+  ly=clamp(ly, goal.y+ballR*0.6, goal.y+goal.h-ballR*0.6);
+  return {x:lx,y:ly,power};
+}
+
+function cpuKeeperDive(dino){
+  // 推測位置：ボール着地点＋ノイズ（スピード高=正確）
+  const noise=goal.w*(0.34 - dino.speed*0.026);
+  const gx=landing.x + rand(-1,1)*noise;
+  const gy=landing.y + rand(-1,1)*noise*0.6;
+  diveKeeperTo(gx,gy,dino);
+  // 到達はボールと同時くらい
+}
+
+function diveKeeperTo(gx,gy,dino){
+  gx=clamp(gx, goal.x+ballR, goal.x+goal.w-ballR);
+  gy=clamp(gy, goal.y+ballR, goal.y+goal.h-ballR*0.4);
+  keeper.fromX=keeper.x; keeper.fromY=keeper.y;
+  keeper.tx=gx; keeper.ty=gy;
+  keeper.dur=clamp(0.42 - dino.speed*0.018, 0.18, 0.45);
+  keeper.t=0; keeper.diving=true;
+}
+
+function keeperReachPx(dino){ return goal.w*(0.085+dino.reach*0.0135) + ballR; }
+
+// ---- 相手が蹴る：あなたが守る ----
+function setupOppKick(){
+  phase=PHASE.AIM_SAVE; canSave=true; saved=false;
+  drag.active=false;
+  // CPUの狙い（隅を狙いがち、正確さでブレ）
+  const side = Math.random()<0.5?-1:1;
+  const cornerX = goal.x+goal.w/2 + side*goal.w*rand(0.18,0.42);
+  const high = Math.random()<0.6;
+  const cornerY = goal.y + (high? goal.h*rand(0.12,0.32) : goal.h*rand(0.45,0.72));
+  const err=(10-oppDino.accuracy)/10;
+  landing.x=clamp(cornerX+rand(-1,1)*goal.w*0.12*err, goal.x+ballR*0.6, goal.x+goal.w-ballR*0.6);
+  landing.y=clamp(cornerY+rand(-1,1)*goal.h*0.12*err, goal.y+ballR*0.6, goal.y+goal.h-ballR*0.6);
+  // ボール準備、少し溜めてから発射
+  ball.x=spot.x; ball.y=spot.y; ball.r=ballR; ball.scale=1; ball.vis=true;
+  centerKeeper(true);
+  // プレイヤーに反応する時間 → スピード低いCPUほど遅い＝守りやすい
+  const delay=clamp(0.5 + (10-oppDino.power)*0.03, 0.4, 0.9);
+  setTimeout(()=>{ if(phase===PHASE.AIM_SAVE){ launchOppKick(); } }, delay*1000);
+}
+
+function launchOppKick(){
+  phase=PHASE.SAVE_FLIGHT;
+  flightDur=clamp(0.55 - oppDino.power*0.013, 0.32, 0.6);
+  flightT=0;
+  // プレイヤーが既にスワイプ済みなら keeper.diving はセット済み。未操作なら中央維持。
+}
+
+// プレイヤーのセーブスワイプ確定
+function commitSave(dx,dy){
+  if(!canSave) return;
+  canSave=false; saved=true;
+  // キーパーの飛び先 = スワイプ方向
+  const kk=(goal.w*0.6)/(W*0.22);
+  let gx = goal.x+goal.w/2 + dx*kk;
+  let gy = goal.y+goal.h*0.55 + dy*kk*0.8;
+  diveKeeperTo(gx,gy,myDino);
+}
+
+// ============ 判定 ============
+function resolveShot(){
+  let isSave;
+  if(phase===PHASE.KICK_FLIGHT){
+    // あなたのキック vs CPUキーパー(oppDino)
+    const d=Math.hypot(keeper.x-landing.x, keeper.y-landing.y);
+    isSave = d < keeperReachPx(oppDino);
+  } else {
+    // 相手のキック vs あなた(myDino)キーパー
+    if(!saved){ isSave=false; } // 未操作=セーブ失敗
+    else {
+      const d=Math.hypot(keeper.x-landing.x, keeper.y-landing.y);
+      isSave = d < keeperReachPx(myDino);
+    }
+  }
+  saveResult = isSave? "save":"goal";
+
+  // スコア反映
+  if(kicker==="me"){
+    if(!isSave){ myScore++; myMarks.push("goal"); } else { myMarks.push("miss"); }
+  } else {
+    if(!isSave){ oppScore++; oppMarks.push("goal"); } else { oppMarks.push("miss"); }
+  }
+
+  flash=1.0;
+  shake=isSave?6:10;
+  phase=PHASE.REVEAL; revealT=1.1;
+}
+
+function afterReveal(){
+  ball.vis=false;
+  saveResult=null;
+  shotIndex++;
+  nextShot();
+}
+
+// ============ バナー & 結果 ============
+function showBanner(turn, big, hint, cb){
+  phase=PHASE.IDLE;
+  bannerTurn.textContent=turn;
+  bannerText.textContent=big;
+  bannerHint.textContent=hint;
+  bannerScreen.classList.remove("hidden");
+  bannerTimer=1.0;
+  bannerCb=()=>{ bannerScreen.classList.add("hidden"); cb(); };
+}
+
+function finish(){
+  running=false; phase=PHASE.IDLE; ball.vis=false;
+  const win = myScore>oppScore;
+  const draw = myScore===oppScore;
+  resultText.textContent = win? "勝利！🏆" : (draw? "引き分け" : "敗北…");
+  resultText.style.color = win? "#ffd86b" : (draw? "#fff" : "#ff8a8a");
+  resultScore.textContent = `${myDino.name} ${myScore} - ${oppScore} ${oppDino.name}`;
+  resultScreen.classList.remove("hidden");
+}
+
+// ============ 入力 ============
+function pos(e){
+  const t=e.touches?e.touches[0]:e;
+  return {x:t.clientX, y:t.clientY};
+}
+function onDown(e){
+  if(phase!==PHASE.AIM_KICK && !(phase===PHASE.AIM_SAVE && canSave)) return;
+  e.preventDefault();
+  const p=pos(e);
+  drag.active=true; drag.sx=p.x; drag.sy=p.y; drag.cx=p.x; drag.cy=p.y;
+}
+function onMove(e){
+  if(!drag.active) return;
+  e.preventDefault();
+  const p=pos(e); drag.cx=p.x; drag.cy=p.y;
+}
+function onUp(e){
+  if(!drag.active) return;
+  e.preventDefault();
+  drag.active=false;
+  const dx=drag.cx-drag.sx, dy=drag.cy-drag.sy;
+  const len=Math.hypot(dx,dy);
+  if(phase===PHASE.AIM_KICK){
+    if(len<12){ return; } // 弱すぎ＝無効、再スワイプ可
+    commitKick(dx,dy);
+  } else if(phase===PHASE.AIM_SAVE && canSave){
+    if(len<12){ return; }
+    commitSave(dx,dy);
+  }
+}
+canvas.addEventListener("touchstart",onDown,{passive:false});
+canvas.addEventListener("touchmove",onMove,{passive:false});
+canvas.addEventListener("touchend",onUp,{passive:false});
+canvas.addEventListener("mousedown",onDown);
+window.addEventListener("mousemove",onMove);
+window.addEventListener("mouseup",onUp);
+
+document.getElementById("startBtn").addEventListener("click",startMatch);
+document.getElementById("againBtn").addEventListener("click",()=>{ resultScreen.classList.add("hidden"); titleScreen.classList.remove("hidden"); });
+
+window.addEventListener("resize",fit);
+window.addEventListener("orientationchange",()=>setTimeout(fit,120));
+
+// ---- init ----
+fit();
+buildGrid();
+centerKeeper(true);
+ball.r=ballR;
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
