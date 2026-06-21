@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MAMETO COFFEE — 自家焙煎スペシャルティコーヒー</title>
+  <meta name="description" content="自家焙煎のスペシャルティコーヒー。店頭でもオンラインでも、一杯ずつていねいに。" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500;600;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Cormorant+Garamond:wght@500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/styles.css" />
+  <link rel="icon" href="/img/favicon.svg" type="image/svg+xml" />
+</head>
+<body>
+  <!-- ===== ヘッダー ===== -->
+  <header class="site-header" id="siteHeader">
+    <div class="container nav">
+      <a href="#top" class="brand">
+        <span class="brand-mark">☕</span>
+        <span class="brand-text">MAMETO<small>COFFEE</small></span>
+      </a>
+      <nav class="nav-links">
+        <a href="#menu">メニュー</a>
+        <a href="#story">こだわり</a>
+        <a href="#visit">店舗情報</a>
+      </nav>
+      <button class="cart-btn" id="openCart" aria-label="カートを開く">
+        <span class="cart-ico">🛒</span>
+        <span class="cart-count" id="cartCount">0</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- ===== ヒーロー ===== -->
+  <section class="hero" id="top">
+    <div class="hero-bg" aria-hidden="true"></div>
+    <div class="hero-steam" aria-hidden="true">
+      <span></span><span></span><span></span>
+    </div>
+    <div class="container hero-inner">
+      <p class="hero-eyebrow">SPECIALTY COFFEE · SHIBUYA</p>
+      <h1 class="hero-title">一杯ずつ、<br />ていねいに。</h1>
+      <p class="hero-lead">
+        豆の個性を引き出した自家焙煎スペシャルティコーヒー。<br />
+        店頭でも、オンラインでも。あなたの一杯をどうぞ。
+      </p>
+      <div class="hero-cta">
+        <a href="#menu" class="btn btn-primary">オンラインで注文する</a>
+        <a href="#story" class="btn btn-ghost">こだわりを見る</a>
+      </div>
+      <div class="hero-badges">
+        <span>🌱 自家焙煎</span>
+        <span>📦 約15分で受取</span>
+        <span>⭐ レビュー 4.9</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 価値訴求 ===== -->
+  <section class="values">
+    <div class="container values-grid">
+      <div class="value-card">
+        <div class="value-ico">🔥</div>
+        <h3>毎日焙煎</h3>
+        <p>注文の鮮度を大切に、店内の焙煎機で少量ずつローストしています。</p>
+      </div>
+      <div class="value-card">
+        <div class="value-ico">🌍</div>
+        <h3>厳選シングルオリジン</h3>
+        <p>世界の産地から、その時期いちばんの豆だけを買い付けています。</p>
+      </div>
+      <div class="value-card">
+        <div class="value-ico">⏱️</div>
+        <h3>スマートに受取</h3>
+        <p>オンラインで先に注文。お店では並ばず、お名前だけでお受け取り。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== メニュー ===== -->
+  <section class="menu-section" id="menu">
+    <div class="container">
+      <div class="section-head">
+        <p class="section-eyebrow">MENU</p>
+        <h2 class="section-title">メニュー</h2>
+        <p class="section-sub">気になる一杯を選んでカートへ。受け取りは店頭で。</p>
+      </div>
+      <div class="menu-tabs" id="menuTabs"></div>
+      <div class="menu-grid" id="menuGrid">
+        <div class="menu-loading">メニューを読み込み中…</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== ストーリー ===== -->
+  <section class="story" id="story">
+    <div class="container story-inner">
+      <div class="story-art" aria-hidden="true">
+        <div class="beans">
+          <span>☕</span><span>🫘</span><span>🌿</span>
+        </div>
+      </div>
+      <div class="story-text">
+        <p class="section-eyebrow">OUR STORY</p>
+        <h2 class="section-title">豆と、人と、時間と。</h2>
+        <p>
+          MAMETO COFFEE は、渋谷の片隅にある小さな自家焙煎のコーヒー店です。
+          「毎日でも飲みたくなる一杯」を目指して、焙煎から抽出までを一杯ずつていねいに。
+        </p>
+        <p>
+          忙しい朝も、ほっと一息つきたい午後も。
+          オンライン注文でお待たせせず、できたてをお渡しします。
+        </p>
+        <blockquote>「いい一日は、いいコーヒーから。」</blockquote>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 店舗情報 ===== -->
+  <section class="visit" id="visit">
+    <div class="container visit-grid">
+      <div class="visit-card">
+        <p class="section-eyebrow">VISIT US</p>
+        <h2 class="section-title">店舗情報</h2>
+        <ul class="visit-list" id="shopInfo"></ul>
+        <p class="visit-note" id="pickupNote"></p>
+      </div>
+      <div class="visit-map" aria-hidden="true">
+        <div class="map-pin">📍</div>
+        <div class="map-grid"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== フッター ===== -->
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <div class="brand">
+        <span class="brand-mark">☕</span>
+        <span class="brand-text">MAMETO<small>COFFEE</small></span>
+      </div>
+      <p>一杯ずつ、ていねいに。 — © <span id="year"></span> MAMETO COFFEE</p>
+      <a href="/admin.html" class="footer-admin">店舗スタッフ用 管理画面 →</a>
+    </div>
+  </footer>
+
+  <!-- ===== カートドロワー ===== -->
+  <div class="drawer-overlay" id="drawerOverlay"></div>
+  <aside class="cart-drawer" id="cartDrawer" aria-label="カート">
+    <div class="cart-head">
+      <h3>ご注文カート</h3>
+      <button class="icon-btn" id="closeCart" aria-label="閉じる">✕</button>
+    </div>
+    <div class="cart-body" id="cartBody"></div>
+    <div class="cart-foot">
+      <div class="cart-total-row">
+        <span>合計</span>
+        <strong id="cartTotal">¥0</strong>
+      </div>
+      <button class="btn btn-primary btn-block" id="checkoutBtn" disabled>レジへ進む</button>
+    </div>
+  </aside>
+
+  <!-- ===== チェックアウト モーダル ===== -->
+  <div class="modal-overlay" id="checkoutOverlay">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="checkoutTitle">
+      <div class="modal-head">
+        <h3 id="checkoutTitle">お受け取り情報</h3>
+        <button class="icon-btn" id="closeCheckout" aria-label="閉じる">✕</button>
+      </div>
+      <form id="checkoutForm" class="modal-body">
+        <label class="field">
+          <span>お名前 <em>必須</em></span>
+          <input type="text" name="customerName" placeholder="例）山田 太郎" required maxlength="40" />
+        </label>
+        <label class="field">
+          <span>電話番号（任意）</span>
+          <input type="tel" name="phone" placeholder="例）090-1234-5678" maxlength="20" />
+        </label>
+        <label class="field">
+          <span>受け取り時間</span>
+          <select name="pickupTime">
+            <option value="asap">できるだけ早く（約15分後）</option>
+            <option value="30min">30分後</option>
+            <option value="1hour">1時間後</option>
+            <option value="later">後で店頭で伝える</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>ご要望（任意）</span>
+          <textarea name="note" rows="2" placeholder="例）ラテはオーツミルクで / 砂糖多め など" maxlength="500"></textarea>
+        </label>
+        <div class="checkout-summary" id="checkoutSummary"></div>
+        <button type="submit" class="btn btn-primary btn-block" id="placeOrderBtn">
+          この内容で注文する
+        </button>
+        <p class="checkout-pay">※ お支払いは店頭にて（現金・各種キャッシュレス対応）</p>
+      </form>
+    </div>
+  </div>
+
+  <!-- ===== 注文完了 モーダル ===== -->
+  <div class="modal-overlay" id="doneOverlay">
+    <div class="modal modal-done" role="dialog" aria-modal="true">
+      <div class="done-check">✓</div>
+      <h3>ご注文ありがとうございます！</h3>
+      <p class="done-number">受付番号 <strong id="doneNumber">#000</strong></p>
+      <p class="done-text" id="doneText"></p>
+      <button class="btn btn-primary btn-block" id="doneClose">閉じる</button>
+    </div>
+  </div>
+
+  <!-- ===== トースト ===== -->
+  <div class="toast" id="toast"></div>
+
+  <script src="/js/app.js"></script>
+</body>
+</html>

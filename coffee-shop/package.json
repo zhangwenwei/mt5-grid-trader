@@ -1,0 +1,14 @@
+{
+  "name": "mameto-coffee",
+  "version": "1.0.0",
+  "description": "MAMETO COFFEE — 自家焙煎コーヒー店のホームページ & オンライン注文システム（依存ゼロ）",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT"
+}

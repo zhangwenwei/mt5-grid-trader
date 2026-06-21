@@ -1,0 +1,93 @@
+/* MAMETO COFFEE — 管理画面 */
+.admin-body { background: var(--cream); }
+
+.admin-header {
+  position: sticky; top: 0; z-index: 50;
+  background: var(--espresso);
+  box-shadow: var(--shadow-sm);
+}
+.admin-nav { display: flex; align-items: center; justify-content: space-between; padding: 14px 24px; }
+.admin-header .brand { color: var(--cream); }
+.admin-header .brand-text small { color: var(--gold); }
+.admin-tools { display: flex; align-items: center; gap: 18px; }
+.auto-refresh { color: var(--latte); font-size: 0.88rem; display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.admin-header .btn-primary { padding: 10px 22px; }
+
+.admin-main { padding: 28px 24px 60px; }
+
+/* 統計 */
+.admin-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+.stat-card {
+  background: #fff; border-radius: 16px; padding: 20px;
+  box-shadow: var(--shadow-sm); border: 1px solid var(--line);
+}
+.stat-card .label { font-size: 0.82rem; color: var(--muted); margin-bottom: 4px; }
+.stat-card .value { font-family: var(--serif); font-size: 1.9rem; font-weight: 700; color: var(--espresso); }
+.stat-card .value small { font-size: 0.9rem; color: var(--caramel); }
+
+/* フィルタ */
+.admin-filters { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 22px; }
+.filter-chip {
+  border: 1.5px solid var(--line); background: #fff; color: var(--coffee);
+  padding: 8px 18px; border-radius: 999px; cursor: pointer; font-weight: 500;
+  font-size: 0.9rem; transition: all 0.2s;
+}
+.filter-chip.active { background: var(--espresso); color: var(--cream); border-color: var(--espresso); }
+
+/* ボード */
+.orders-board { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 18px; }
+.board-empty { grid-column: 1/-1; text-align: center; color: var(--muted); padding: 60px; }
+
+.order-card {
+  background: #fff; border-radius: 18px;
+  box-shadow: var(--shadow-sm); border: 1px solid var(--line);
+  overflow: hidden; display: flex; flex-direction: column;
+  border-top: 5px solid var(--caramel);
+}
+.order-card.s-received { border-top-color: var(--terracotta); }
+.order-card.s-preparing { border-top-color: var(--gold); }
+.order-card.s-ready { border-top-color: #3f8a4d; }
+.order-card.s-completed { border-top-color: #9aa0a6; opacity: 0.78; }
+.order-card.s-cancelled { border-top-color: #b03b3b; opacity: 0.6; }
+
+.oc-head { display: flex; justify-content: space-between; align-items: center; padding: 16px 18px 8px; }
+.oc-num { font-family: var(--serif); font-size: 1.4rem; font-weight: 700; color: var(--espresso); }
+.oc-time { font-size: 0.78rem; color: var(--muted); }
+.oc-status {
+  font-size: 0.72rem; font-weight: 700; padding: 3px 11px; border-radius: 999px;
+  align-self: flex-start;
+}
+.st-received { background: #fde8e0; color: #b14a26; }
+.st-preparing { background: #fcf0d2; color: #946c12; }
+.st-ready { background: #d9f0dd; color: #2f7a3e; }
+.st-completed { background: #eceef0; color: #5f6368; }
+.st-cancelled { background: #f6dede; color: #a13030; }
+
+.oc-customer { padding: 4px 18px; }
+.oc-customer .name { font-weight: 700; color: var(--ink); font-size: 1.05rem; }
+.oc-customer .meta { font-size: 0.82rem; color: var(--muted); }
+
+.oc-items { padding: 10px 18px; border-top: 1px dashed var(--line); margin-top: 8px; }
+.oc-item { display: flex; justify-content: space-between; font-size: 0.9rem; padding: 3px 0; color: var(--coffee); }
+.oc-item .q { color: var(--terracotta); font-weight: 700; margin-right: 6px; }
+.oc-note { background: var(--cream); border-radius: 10px; padding: 8px 12px; margin: 8px 0 0; font-size: 0.82rem; color: var(--coffee); }
+
+.oc-foot { margin-top: auto; padding: 12px 18px 16px; border-top: 1px solid var(--line); }
+.oc-total { display: flex; justify-content: space-between; font-weight: 700; margin-bottom: 12px; color: var(--espresso); }
+.oc-total .amt { font-family: var(--serif); font-size: 1.2rem; }
+.oc-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.oc-actions button {
+  flex: 1; min-width: 90px;
+  border: none; border-radius: 10px; padding: 9px; cursor: pointer;
+  font-weight: 700; font-size: 0.85rem; font-family: var(--sans);
+  transition: transform 0.15s, opacity 0.2s;
+}
+.oc-actions button:hover { transform: translateY(-1px); }
+.act-preparing { background: var(--gold); color: #4a2f00; }
+.act-ready { background: #3f8a4d; color: #fff; }
+.act-completed { background: var(--espresso); color: var(--cream); }
+.act-cancel { background: #f1e4e4; color: #a13030; flex: 0 0 auto; min-width: 0; padding: 9px 14px; }
+
+@media (max-width: 700px) {
+  .admin-stats { grid-template-columns: repeat(2, 1fr); }
+}

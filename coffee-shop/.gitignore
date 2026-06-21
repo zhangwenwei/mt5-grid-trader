@@ -1,0 +1,9 @@
+# このディレクトリの .html はサイト本体なので追跡する
+# （リポジトリ直下の .gitignore が *.html を除外しているため再包含）
+!*.html
+
+node_modules/
+data/orders.json
+*.log
+.DS_Store
+shot.mjs

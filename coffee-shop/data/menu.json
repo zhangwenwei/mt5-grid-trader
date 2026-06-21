@@ -1,0 +1,53 @@
+{
+  "shop": {
+    "name": "MAMETO COFFEE",
+    "tagline": "一杯ずつ、ていねいに。",
+    "description": "自家焙煎のスペシャルティコーヒー。豆の個性を引き出した一杯を、店頭でもオンラインでも。",
+    "address": "東京都渋谷区神南 1-2-3 マメトビル 1F",
+    "hours": "平日 8:00 - 19:00 / 土日祝 9:00 - 18:00",
+    "phone": "03-1234-5678",
+    "pickupNote": "ご注文後、店頭でお名前をお伝えください。ご注文から約15分でお受け取りいただけます。"
+  },
+  "categories": [
+    {
+      "id": "espresso",
+      "name": "エスプレッソ",
+      "items": [
+        { "id": "espresso", "name": "エスプレッソ", "en": "Espresso", "desc": "深く凝縮した一杯。豆本来の甘みと余韻。", "price": 380, "badge": "" },
+        { "id": "americano", "name": "アメリカーノ", "en": "Americano", "desc": "すっきり飲みやすいブラック。", "price": 420, "badge": "" },
+        { "id": "latte", "name": "カフェラテ", "en": "Caffè Latte", "desc": "なめらかなミルクと相性抜群。一番人気。", "price": 520, "badge": "人気" },
+        { "id": "cappuccino", "name": "カプチーノ", "en": "Cappuccino", "desc": "ふわふわのフォームミルク。", "price": 520, "badge": "" },
+        { "id": "mocha", "name": "カフェモカ", "en": "Caffè Mocha", "desc": "濃厚チョコレートのご褒美ラテ。", "price": 580, "badge": "" }
+      ]
+    },
+    {
+      "id": "drip",
+      "name": "ドリップ",
+      "items": [
+        { "id": "house-blend", "name": "ハウスブレンド", "en": "House Blend", "desc": "バランスの取れた毎日の一杯。", "price": 450, "badge": "定番" },
+        { "id": "single-ethiopia", "name": "エチオピア イルガチェフェ", "en": "Ethiopia Yirgacheffe", "desc": "華やかな花とベリーのアロマ。", "price": 580, "badge": "限定" },
+        { "id": "single-guatemala", "name": "グアテマラ アンティグア", "en": "Guatemala Antigua", "desc": "チョコレートとナッツのコク。", "price": 560, "badge": "" },
+        { "id": "cold-brew", "name": "水出しコールドブリュー", "en": "Cold Brew", "desc": "12時間抽出。まろやかで甘い。", "price": 540, "badge": "" }
+      ]
+    },
+    {
+      "id": "other",
+      "name": "その他ドリンク",
+      "items": [
+        { "id": "matcha-latte", "name": "抹茶ラテ", "en": "Matcha Latte", "desc": "宇治抹茶を贅沢に。", "price": 560, "badge": "" },
+        { "id": "chai", "name": "チャイラテ", "en": "Chai Latte", "desc": "スパイス香る本格チャイ。", "price": 540, "badge": "" },
+        { "id": "cocoa", "name": "オーガニックココア", "en": "Hot Cocoa", "desc": "やさしい甘さのホットココア。", "price": 500, "badge": "" }
+      ]
+    },
+    {
+      "id": "food",
+      "name": "フード & 豆",
+      "items": [
+        { "id": "croissant", "name": "クロワッサン", "en": "Croissant", "desc": "毎朝焼き上げるバター香る一品。", "price": 320, "badge": "" },
+        { "id": "banana-bread", "name": "バナナブレッド", "en": "Banana Bread", "desc": "しっとり自家製。コーヒーのお供に。", "price": 380, "badge": "" },
+        { "id": "cheesecake", "name": "バスクチーズケーキ", "en": "Basque Cheesecake", "desc": "濃厚なめらか。売り切れ必至。", "price": 480, "badge": "人気" },
+        { "id": "beans-200", "name": "コーヒー豆 200g", "en": "Coffee Beans 200g", "desc": "お好きなシングルオリジンをお持ち帰り。", "price": 1280, "badge": "" }
+      ]
+    }
+  ]
+}
