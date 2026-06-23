@@ -35,10 +35,10 @@ MT5 区间双向网格 EA（单一策略）：上半做空 / 下半做多、逆�
 - 0 关闭时函数第一行即返回，无性能损耗。
 
 ## 越界判断与处理
-- **越界判断**(`IsOutOfRange`)：用上一根**已收盘** K 线 `iClose(_Symbol,_Period,1)`。越界=收盘超出 `边界±门槛`；恢复=收盘回到 `边界内侧 缓冲` 以内（滞回带防贴边抖动）。
+- **越界判断**(`IsOutOfRange`)：用当前 tick 的 **`bid/ask`** 实时判断。越界=`bid > 上界+门槛` 或 `ask < 下界-门槛`；恢复=`bid ≤ 上界-缓冲 且 ask ≥ 下界+缓冲`（滞回带防贴边抖动）。
 - 门槛与恢复缓冲**共用同一距离**(`BreakoutDist`)，**单位恒为 ATR**：`BreakoutDist_AtrMult`×ATR(周期 `BreakoutDist_AtrPeriod`，读不到/倍数≤0 则距离 0)。距离=0 即碰线触发。缓冲经 `ClampBuffer` 限制 ≤ 区间宽 40%。
-- **越界处理恒为全平止损**：超界 `CloseAll` 并暂停，收盘回内侧自动恢复(画蓝色竖线)。无开关、无 `BREAKOUT_OFF` 兜底关闭选项——越界一律全平。
-- **`HandleBreakout` 每根新 bar 才评估一次**(判据只依赖已收盘 K 线+ATR(1), bar 内不变)：避免逐 tick `CopyBuffer(ATR)` 拖慢回测。**勿改回逐 tick**——越界状态只可能在 bar 收盘时翻转, 逐 tick 评估纯属浪费。`g_outOfRange` 期间仍逐 tick `CloseAll` 兜底(已平时空循环)。
+- **越界处理恒为全平止损**：超界 `CloseAll` 并暂停，bid/ask 回内侧自动恢复(画蓝色竖线)。无开关、无 `BREAKOUT_OFF` 兜底关闭选项——越界一律全平。
+- **`HandleBreakout` 逐 tick 评估**（v1.06 起）：触碰边界立即触发，含影线穿刺；`BreakoutDist()` 内部做 ATR 按 bar 缓存（`static s_atrBar/s_atrLast`），避免逐 tick `CopyBuffer` 开销。`g_outOfRange` 期间逐 tick `CloseAll` 兜底。
 
 ## 可视化
 - **画图总开关 `DrawLines_ShowGraphics`**(默认开)：off = 不画任何图形(边界/网格线/标签/越界恢复线/竖线/信息面板)，**不影响交易**；守卫在 `DrawLines`/`DrawVLine`/`DrawInfoPanel` 及 OnTick 刷新块开头。

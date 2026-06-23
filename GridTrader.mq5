@@ -13,7 +13,7 @@
 //|  /2 天然封顶), 请控制手数与格数, 注意保证金, 先模拟回测。         |
 //+------------------------------------------------------------------+
 #property copyright "GridTrader"
-#property version   "1.05"
+#property version   "1.06"
 #property strict
 
 #include <Trade\Trade.mqh>
@@ -173,7 +173,7 @@ int OnInit()
    DrawLines();
    DrawInfoPanelTrail();   // 顶行参数运行期不变, 只在 OnInit 画一次
 
-   PrintFormat("GridTrader v3 启动. 上界=%.5f 中线=%.5f 下界=%.5f 网格数=%d 格距=%.5f",
+   PrintFormat("GridTrader v1.06 启动. 上界=%.5f 中线=%.5f 下界=%.5f 网格数=%d 格距=%.5f",
                g_upper, g_center, g_lower, TradeGrid_GridCount, g_grid);
    return(INIT_SUCCEEDED);
   }
@@ -615,10 +615,19 @@ bool CheckLossCut()
 double BreakoutDist()
   {
    if(BreakoutDist_AtrMult <= 0) return(0.0);
-   double atr[];
    if(g_boAtrHandle == INVALID_HANDLE) return(0.0);
-   if(CopyBuffer(g_boAtrHandle, 0, 1, 1, atr) < 1 || atr[0] <= 0) return(0.0);
-   return(BreakoutDist_AtrMult * atr[0]);
+   // ATR 每 bar 读一次缓存, 避免逐 tick CopyBuffer 拖慢回测
+   static datetime s_atrBar  = 0;
+   static double   s_atrLast = 0.0;
+   datetime curBar = iTime(_Symbol, _Period, 0);
+   if(curBar > 0 && curBar != s_atrBar)
+     {
+      s_atrBar = curBar;
+      double atr[];
+      if(CopyBuffer(g_boAtrHandle, 0, 1, 1, atr) >= 1 && atr[0] > 0)
+         s_atrLast = atr[0];
+     }
+   return(BreakoutDist_AtrMult * s_atrLast);
   }
 
 //+------------------------------------------------------------------+
@@ -634,65 +643,53 @@ double ClampBuffer(double buffer)
   }
 
 //+------------------------------------------------------------------+
-//| 越界判断: 上一根收盘价超出"边界 ± 外扩门槛"即算越界。          |
-//|  门槛按距离单位取 pips套或ATR套, 0 时为收盘一超界即触发。      |
+//| 越界判断: 当前 tick 的 bid/ask 超出"边界 ± 外扩门槛"即算越界。  |
+//|  逐 tick 检查, 触碰边界立即触发(注意长影线可能误触)。          |
 //+------------------------------------------------------------------+
 bool IsOutOfRange()
   {
-   double close1 = iClose(_Symbol, _Period, 1);
-   if(close1 <= 0) return(false);
+   double bid    = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double ask    = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
    double margin = BreakoutDist();
-   return(close1 > g_upper + margin || close1 < g_lower - margin);
+   return(bid > g_upper + margin || ask < g_lower - margin);
   }
 
 //+------------------------------------------------------------------+
 //| 越界处理 (恒为全平止损):                                         |
-//|  越界判断委托给 IsOutOfRange(); 恢复看收盘价回到内侧缓冲带。     |
-//|  返回值: true=当前处于越界暂停中(本 tick 不应再止盈/开单);       |
-//|          false=区间内(正常交易)。                                |
+//|  逐 tick 检查当前 bid/ask; 触碰边界立刻全平(含影线)。           |
+//|  恢复用"边界内侧 buffer"滞回带, 防贴边反复恢复/止损。           |
+//|  返回值: true=当前处于越界暂停中; false=区间内(正常交易)。       |
 //+------------------------------------------------------------------+
 bool HandleBreakout()
   {
-   // 越界判据只依赖上一根已收盘 K 线(iClose(1)+ATR(1)), 一根 bar 内不变 ->
-   // 每根新 bar 才评估一次, 省去逐 tick 的 CopyBuffer(ATR), 大幅加快回测(行为等价)。
-   static datetime evalBar = 0;
-   datetime curBar = iTime(_Symbol, _Period, 0);
-   if(curBar > 0 && curBar != evalBar)
-     {
-      evalBar = curBar;
-      double close1 = iClose(_Symbol, _Period, 1);   // 上一根已收盘 K 线收盘价
-      if(close1 > 0)                                   // 历史足够才判定
-        {
-         // 触发用边界, 恢复用"边界内侧 buffer"形成滞回带, 防贴边反复止损/恢复。
-         double buffer   = ClampBuffer(BreakoutDist());
-         bool out        = IsOutOfRange();                                            // 越界(触发)
-         bool backInside = (close1 <= g_upper - buffer && close1 >= g_lower + buffer); // 回到内侧(恢复)
+   double bid    = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double ask    = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   double buffer = ClampBuffer(BreakoutDist());
+   bool   out    = IsOutOfRange();
+   bool   backInside = (bid <= g_upper - buffer && ask >= g_lower + buffer);
 
-         //=== 全平止损 ===
-         if(out && !g_outOfRange)
-           {
-            double brkBuyPips  = TotalPipsByType(POSITION_TYPE_BUY);
-            double brkSellPips = TotalPipsByType(POSITION_TYPE_SELL);
-            double brkTotal    = brkBuyPips + brkSellPips;
-            g_outOfRange = true;
-            PrintFormat("超界全平: 上一根收盘 %.*f 超出区间 [%.*f, %.*f]",
-                        g_digits, close1, g_digits, g_lower, g_digits, g_upper);
-            DrawVLine(clrDodgerBlue);   // 止损: 蓝色竖线
-            DrawCloseLabel("越界止损", brkTotal, SymbolInfoDouble(_Symbol, SYMBOL_BID));
-           }
-         else if(backInside && g_outOfRange)
-           {
-            g_outOfRange = false;
-            PrintFormat("回到区间内侧(缓冲%.1f×ATR), 恢复交易: 上一根收盘 %.*f",
-                        BreakoutDist_AtrMult, g_digits, close1);
-           }
-        }
+   if(out && !g_outOfRange)
+     {
+      double brkBuyPips  = TotalPipsByType(POSITION_TYPE_BUY);
+      double brkSellPips = TotalPipsByType(POSITION_TYPE_SELL);
+      double brkTotal    = brkBuyPips + brkSellPips;
+      g_outOfRange = true;
+      PrintFormat("超界全平: 当前价 bid=%.*f 超出区间 [%.*f, %.*f]",
+                  g_digits, bid, g_digits, g_lower, g_digits, g_upper);
+      DrawVLine(clrDodgerBlue);
+      DrawCloseLabel("越界止损", brkTotal, bid);
+     }
+   else if(backInside && g_outOfRange)
+     {
+      g_outOfRange = false;
+      PrintFormat("回到区间内侧(缓冲%.1f×ATR), 恢复交易: bid=%.*f",
+                  BreakoutDist_AtrMult, g_digits, bid);
      }
 
    if(g_outOfRange)
      {
-      CloseAll();      // 越界暂停期逐 tick 兜底平仓(已平时仅空循环, 开销可忽略)
-      return(true);    // 暂停止盈/开单
+      CloseAll();
+      return(true);
      }
    return(false);
   }
