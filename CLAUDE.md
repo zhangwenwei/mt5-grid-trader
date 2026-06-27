@@ -45,7 +45,7 @@ MT5 区间双向网格 EA（单一策略）：上半做空 / 下半做多、逆�
 - 买/卖独立(各自统计、各自止盈)，只认 `_Symbol + CTrade_Magic`；点差过滤 `OnTick_MaxSpread`(默认 0=关)。
 - **水平线**(仅视觉/实盘图显示)：红实粗=上界 / 黄虚细=中线 / 绿实粗=下界 / 灰细=网格线；**黄实粗**=越界触发线(边界±门槛)；**黄虚细**=恢复界限(边界内侧±缓冲)。
 - **垂直线**(`DrawVLine`)：**蓝**=越界全平止损时刻；**绿**=移动止损平仓且落袋 `≥TpThreshold_BasePips`（固定阈值，赚得多）；**黄**=移动止损平仓且落袋 `<TpThreshold_BasePips`（赚得少）；**橙红**=超单亏损保护(`LossCut_MinOrders`)触发。注意黄色被复用——水平黄=越界线/恢复线、垂直黄=移动止损未达标，按线型区分。
-- **左上角面板**：`DrawInfoPanelTrail()` 在 OnInit 调用一次，画移动止损参数等静态行（运行中不变）；`DrawInfoPanel()` 每 tick 实时刷新动态浮盈信息（**不要改回按 bar 节流**——会让浮盈显示滞后一根 bar，与实际盈亏严重不符；回测要快就关 `DrawLines_ShowGraphics` 或关可视模式）。面板内容：① 移动止损 开/关+参数(开金/关银)；② 买、③ 卖各自总体盈利(总pips)+单数+(开移动止损时)**峰值始终显示**: 未武装 `峰值X→启动N 止损目标T (待启动)`、已武装 `峰值X 止损目标T (已启动)`(盈绿亏红，无单灰)。峰值 `g_trailPeakBuy/Sell` 仅在 `TrailTotal` 内每 tick 更新(故移动止损开时才有意义)。
+- **左上角面板**：`DrawInfoPanelTrail()` 在 OnInit 调用一次，画移动止损参数等静态行（运行中不变）；`DrawInfoPanel()` 每 tick 实时刷新动态浮盈信息（每 tick 调用，但面板内容未变时跳过重绘）（**不要改回按 bar 节流**——会让浮盈显示滞后一根 bar，与实际盈亏严重不符；回测要快就关 `DrawLines_ShowGraphics` 或关可视模式）。面板内容：① 移动止损 开/关+参数(开金/关银)；② 买、③ 卖各自总体盈利(总pips)+单数+(开移动止损时)**峰值始终显示**: 未武装 `峰值X→启动N 止损目标T (待启动)`、已武装 `峰值X 止损目标T (已启动)`(盈绿亏红，无单灰)。峰值 `g_trailPeakBuy/Sell` 仅在 `TrailTotal` 内每 tick 更新(故移动止损开时才有意义)。
 - 下单 comment 标网格编号 "Grid Buy/Sell #k"(k=距中线第几格)；`TesterHideIndicators(true)` 隐藏视觉回测指标；`OnDeinit` 不删 `GT_` 对象。
 
 ## 开单冷却（最易踩坑，务必保持）
@@ -68,37 +68,7 @@ MT5 区间双向网格 EA（单一策略）：上半做空 / 下半做多、逆�
 - 结果看同目录 `GridTrader.log`（**UTF-16**，PowerShell 用 `Get-Content -Encoding Unicode`），找 `Result: 0 errors`。
 - **写文件前确认 MetaEditor 没打开着该文件**——打开时外部写入/编译会被还原(反复踩过)。
 
-## 回测 ini 参数名（与代码变量名一致）
-回测 ini 文件的 `[TesterInputs]` 须用以下实际变量名：
-```ini
-[TesterInputs]
-TradeGrid_UpperPrice=1.1400
-TradeGrid_LowerPrice=1.0600
-TradeGrid_EnableBuy=true
-TradeGrid_EnableSell=true
-TradeGrid_GridCount=10
-TradeGrid_FirstAtEdge=true
-LotForLine_InitLots=0.01
-LotForLine_ReducePerLine=0.0
-LotForLine_MinLots=0.01
-TpThreshold_BasePips=60
-TrailTotal_AddPerOrder=0
-TrailTotal_Enable=false
-TrailTotal_KeepPct=70
-LossCut_MinOrders=0
-BreakoutDist_AtrMult=1.0
-BreakoutDist_AtrPeriod=14
-OnTick_MaxSpread=0
-CTrade_Magic=20240601
-CTrade_Slippage=30
-DrawLines_ShowGraphics=false
-```
-
-## 回测验证
-- 无法远程触发 MT5 测试器 GUI；验证靠**读回测日志逐笔核对**。
-- 日志：`C:\Users\ZWW\AppData\Roaming\MetaQuotes\Tester\<TerminalID>\Agent-127.0.0.1-30xx\logs\<date>.log`（UTF-16，取修改时间最新的 Agent）。
-- 命令行编译后 MT5 端**必须重新加载 EA / 重开测试器**才生效，否则看的是缓存旧参数(反复踩过)。
-- 回测无数据/秒结束：先查日志 `history data begins from ...`，常见是回测区间早于品种可用历史。
+> 回测相关流程（回测 ini 参数名、回测验证/读日志核对）见 [docs/DEV_工作流.md](docs/DEV_工作流.md)。
 
 ## 风险红线（涉及资金，主动提醒用户）
 - 单边突破时在边界**止损式全平**吃亏，是设计内最坏情况；越界处理现恒为全平止损(无关闭选项)。

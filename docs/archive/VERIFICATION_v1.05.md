@@ -1,5 +1,10 @@
 # GridTrader 重构等价验证报告 (VERIFICATION.md)
 
+> ⚠️ **历史归档 (v1.05)**：本报告验证的是 v1.05 那次「把固定止盈提取为 `Mgmt_FixedTP()`」的重构。
+> **当前 v1.06 代码中已无 `Mgmt_FixedTP` 函数**（固定止盈又改回内联在 `OnTick` 中），
+> 故本报告不再对应任何现存代码，仅作历史留存，**勿据此理解当前行为**。
+> 当前行为以 [BASELINE.md](../../BASELINE.md) 与 `GridTrader.mq5` 为准。
+
 > 验证者：独立 subagent（未参与重构）
 > 对照基准：BASELINE.md + 原始代码（重构前 OnTick 内联逻辑）
 
