@@ -2,9 +2,10 @@
 *.ex5
 *.log
 
-# Claude 工作目录
-.claude/
-memory/
+# Claude 工作目录（仅 .claude/memory 随仓库走，其余 .claude 内容忽略）
+.claude/*
+!.claude/memory/
+/memory/
 
 # 临时演示/分析文件
 *.html

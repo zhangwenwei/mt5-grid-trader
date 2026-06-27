@@ -1,7 +1,10 @@
-# GridTrader EA — 行为基线 (BASELINE.md)
+# GridTrader EA — 行为规格 / 行为基线 (BASELINE.md)
 
-> 本文件是重构前的完整行为契约，所有等价验证以此为基准。
-> 对应代码：GridTrader.mq5 v1.05，提交 a5053bd。
+> 本文件是 GridTrader 的完整行为规格，与当前代码逐项对应，作为长期维护的详细参考
+> （与 CLAUDE.md 互补：CLAUDE.md 偏规约/约定，本文件偏精确流程与公式）。
+> 对应代码：GridTrader.mq5 **v1.06**，提交 bcb6c34。
+> 变更历史：v1.05(a5053bd) → v1.06 把越界检测从「每根新 bar 收盘判断」改为「逐 tick bid/ask 实时判断」，
+> 并给 ATR 加按 bar 缓存（见 §8.11 / §8.12 / §8.14 / §12 / §14）。
 
 ---
 
@@ -10,7 +13,7 @@
 | 属性 | 值 |
 |------|----|
 | 文件 | GridTrader.mq5 |
-| 版本 | `#property version "1.05"` |
+| 版本 | `#property version "1.06"` |
 | 账户模式 | 对冲 (Hedging)，MQL5 |
 | 依赖库 | `<Trade\Trade.mqh>`、`<Trade\PositionInfo.mqh>` |
 | 全局对象 | `CTrade trade;`、`CPositionInfo pos;` |
@@ -130,7 +133,7 @@
    g_grid   = (g_upper - g_lower) / TradeGrid_GridCount
 7. DrawLines()
 8. DrawInfoPanelTrail()
-9. PrintFormat("GridTrader v3 启动. ...")
+9. PrintFormat("GridTrader v1.06 启动. 上界=%.5f 中线=%.5f 下界=%.5f 网格数=%d 格距=%.5f", ...)
 10. return INIT_SUCCEEDED
 ```
 
@@ -319,6 +322,8 @@ if(pct > 90) pct = 90
 return pct / 100.0
 ```
 
+注：pct 为整型运算（三个量皆 int，结果按 int 截断）。
+
 ### 8.8 TpThreshold — 移动止损启动阈值
 
 ```
@@ -382,31 +387,27 @@ if(sellN > LossCut_MinOrders):
 return closed
 ```
 
-### 8.11 HandleBreakout — 越界处理（每根新 bar 才判断）
+### 8.11 HandleBreakout — 越界处理（逐 tick 判断）
 
 ```
-static datetime evalBar = 0
-curBar = iTime(_Symbol, _Period, 0)
-if(curBar > 0 && curBar != evalBar):
-  evalBar = curBar
-  close1 = iClose(_Symbol, _Period, 1)
-  if(close1 > 0):
-    buffer   = ClampBuffer(BreakoutDist())
-    out      = IsOutOfRange()                         // close1 > upper+margin || < lower-margin
-    backInside = (close1 <= g_upper-buffer && close1 >= g_lower+buffer)
+bid    = SymbolInfoDouble(SYMBOL_BID)
+ask    = SymbolInfoDouble(SYMBOL_ASK)
+buffer = ClampBuffer(BreakoutDist())
+out    = IsOutOfRange()                              // bid > upper+margin || ask < lower-margin
+backInside = (bid <= g_upper-buffer && ask >= g_lower+buffer)
 
-    if(out && !g_outOfRange):                         // 新越界事件
-      brkBuyPips  = TotalPipsByType(BUY)
-      brkSellPips = TotalPipsByType(SELL)
-      brkTotal    = brkBuyPips + brkSellPips
-      g_outOfRange = true
-      PrintFormat(...)
-      DrawVLine(clrDodgerBlue)
-      DrawCloseLabel("越界止损", brkTotal, BID)
+if(out && !g_outOfRange):                            // 新越界事件
+  brkBuyPips  = TotalPipsByType(BUY)
+  brkSellPips = TotalPipsByType(SELL)
+  brkTotal    = brkBuyPips + brkSellPips
+  g_outOfRange = true
+  PrintFormat("超界全平: 当前价 bid=... 超出区间 [...]")
+  DrawVLine(clrDodgerBlue)
+  DrawCloseLabel("越界止损", brkTotal, bid)
 
-    elif(backInside && g_outOfRange):                 // 恢复事件
-      g_outOfRange = false
-      PrintFormat(...)
+elif(backInside && g_outOfRange):                    // 恢复事件
+  g_outOfRange = false
+  PrintFormat("回到区间内侧(缓冲...×ATR), 恢复交易: bid=...")
 
 if(g_outOfRange):
   CloseAll()   // 逐tick兜底平仓
@@ -414,18 +415,28 @@ if(g_outOfRange):
 return false
 ```
 
-**关键**：`g_outOfRange` 期间每 tick 调用 `CloseAll()`（已平时空循环，开销可忽略）。
+**v1.06 变化**：不再有 `static evalBar`、不再用上一根收盘 `close1`；改为**每 tick** 用当前 `bid/ask`
+判断，触碰边界（含长影线穿刺）立即触发。`g_outOfRange` 期间每 tick 调用 `CloseAll()`（已平时空循环，开销可忽略）。
 
-### 8.12 BreakoutDist — 越界距离
+### 8.12 BreakoutDist — 越界距离（ATR 按 bar 缓存）
 
 ```
 if(BreakoutDist_AtrMult <= 0) return 0.0
 if(g_boAtrHandle == INVALID_HANDLE) return 0.0
-if(CopyBuffer(g_boAtrHandle, 0, 1, 1, atr) < 1 || atr[0] <= 0) return 0.0
-return BreakoutDist_AtrMult * atr[0]
+static datetime s_atrBar  = 0      // 上次取 ATR 的 bar 时间
+static double   s_atrLast = 0.0    // 缓存的 ATR 值
+curBar = iTime(_Symbol, _Period, 0)
+if(curBar > 0 && curBar != s_atrBar):              // 每根新 bar 才读一次
+  s_atrBar = curBar
+  if(CopyBuffer(g_boAtrHandle, 0, 1, 1, atr) >= 1 && atr[0] > 0):
+    s_atrLast = atr[0]                              // 读失败则沿用旧值
+return BreakoutDist_AtrMult * s_atrLast
 ```
 
 **注意**：`CopyBuffer` 从 `shift=1` 取 1 根（上一根已收盘 bar 的 ATR）。
+注：某 bar 的 CopyBuffer 读失败时 s_atrBar 仍已更新为该 bar，故本 bar 内不再重试，继续沿用旧 s_atrLast。
+**v1.06 变化**：加 `static s_atrBar/s_atrLast` 按 bar 缓存，避免逐 tick `CopyBuffer` 拖慢回测
+（越界判断改逐 tick 后本函数每 tick 都会被调用）。首根 bar 取到值前 `s_atrLast=0`（距离=0，碰线即触发）。
 
 ### 8.13 ClampBuffer — 缓冲限幅
 
@@ -436,14 +447,17 @@ buffer = Max(buffer, 0)
 return buffer
 ```
 
-### 8.14 IsOutOfRange — 越界判断
+### 8.14 IsOutOfRange — 越界判断（逐 tick bid/ask）
 
 ```
-close1 = iClose(_Symbol, _Period, 1)
-if(close1 <= 0) return false
+bid    = SymbolInfoDouble(SYMBOL_BID)
+ask    = SymbolInfoDouble(SYMBOL_ASK)
 margin = BreakoutDist()
-return (close1 > g_upper + margin || close1 < g_lower - margin)
+return (bid > g_upper + margin || ask < g_lower - margin)
 ```
+
+**v1.06 变化**：旧版用上一根收盘 `close1`（每 bar 一次）；新版用**当前 tick 的 bid/ask**——
+上破看 `bid`、下破看 `ask`，逐 tick 实时触发。
 
 ---
 
@@ -500,8 +514,9 @@ trade.PositionClose(ticket)
 | 固定止盈 | **每个 tick** |
 | 移动止损 (TrailTotal) | **每个 tick** |
 | 超单亏损保护 | **每个 tick** |
-| 越界状态翻转 (HandleBreakout) | **每根新 bar 一次**（evalBar 静态变量）|
+| 越界状态翻转 (HandleBreakout) | **每个 tick**（v1.06 起，用当前 bid/ask）|
 | 价格标签/越界线刷新 | **每根新 bar 一次**（lblBar 静态变量）|
+| ATR 读取 (BreakoutDist) | **每根新 bar 一次**（s_atrBar 缓存，值供逐 tick 越界判断用）|
 | DrawInfoPanel 刷新 | **每个 tick**（内容缓存，减少实际写入）|
 
 ---
@@ -522,6 +537,7 @@ trade.PositionClose(ticket)
 
 **OnDeinit 不删除任何 GT_ 对象。**
 `DrawLines_ShowGraphics=false` 时不创建/更新任何图形对象。
+注：网格线对象 GT_g_u*/GT_g_d* 数量封顶 200（创建循环 gi<200）。
 
 ---
 
@@ -529,6 +545,6 @@ trade.PositionClose(ticket)
 
 | 所在函数 | 变量 | 作用 |
 |---------|------|------|
-| `HandleBreakout` | `evalBar` (datetime) | 每 bar 只评估一次越界 |
-| `OnTick` | `lblBar` (datetime) | 每 bar 只刷新一次标签 |
+| `BreakoutDist` | `s_atrBar` (datetime), `s_atrLast` (double) | ATR 每 bar 读一次并缓存（v1.06，替代已删的 evalBar）|
+| `OnTick` | `lblBar` (datetime) | 每 bar 只刷新一次标签/越界线位置 |
 | `DrawInfoPanel` | `prevBuyTxt`, `prevBuyClr`, `prevSellTxt`, `prevSellClr` | 面板内容缓存 |

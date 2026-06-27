@@ -5,8 +5,8 @@
 //|  逻辑: 人工填上下边界, 中线=(上界+下界)/2;                        |
 //|        中线~上界 价格触线做空, 下界~中线 价格触线做多;            |
 //|        方向总体止盈/移动止损出场; 中线本身不开单。              |
-//|        上一根收盘超出上/下界 -> 全平并暂停开新单,                |
-//|        close 回到区间内自动恢复交易。                           |
+//|        bid/ask 逐 tick 超出上/下界 -> 全平并暂停开新单,           |
+//|        价格回到区间内自动恢复交易。                            |
 //|                                                                  |
 //|  风险提示: 区间网格在单边突破时会在边界被止损式全平吃亏,         |
 //|  这是设计内的最坏情况; 区间内同向可累积多单(上限由网格线数≈格数  |
@@ -57,9 +57,9 @@ input int      TrailTotal_KeepPct    = 70;         // TrailTotal_KeepPct | 回�
 input int      TrailTotal_AddPerOrder = 0;         // TrailTotal_AddPerOrder | 每多持一单, 回撤触发百分比额外收紧的百分点 (0=不随单数变; 上限90%; 例基准70+每单5->1单70/2单75/3单80)
 
 input group           "=== 越界判断 (怎么算 越界 / 恢复; 越界恒为全平止损) ==="
-// 全部基于上一根已收盘 K 线(避免插针误触发)。越界与恢复共用同一距离(ATR 倍数, 随波动自适应):
-//   越界 = 收盘价 超出(边界 + 距离) -> 全平所有单并暂停(画蓝色竖线);
-//   恢复 = 收盘价 回到(边界内侧 距离)以内 -> 自动恢复交易。
+// 用当前 tick 的 bid/ask 实时判断(逐 tick, 含影线穿刺立即触发)。越界与恢复共用同一距离(ATR 倍数, 随波动自适应):
+//   越界 = bid 超出(上界 + 距离) 或 ask 跌破(下界 - 距离) -> 全平所有单并暂停(画蓝色竖线);
+//   恢复 = bid 回到(上界内侧 缓冲) 且 ask 回到(下界内侧 缓冲) -> 自动恢复交易。
 input double   BreakoutDist_AtrMult       = 1.0;      // BreakoutDist_AtrMult | 越界/恢复距离 = 此倍数 × ATR
 input int      BreakoutDist_AtrPeriod = 14;       // BreakoutDist_AtrPeriod | ATR 周期
 
@@ -107,7 +107,7 @@ double g_trailPeakSell = 0.0;
 // 越界距离的 ATR 句柄(越界判断恒用 ATR, OnInit 创建)
 int    g_boAtrHandle = INVALID_HANDLE;
 
-// 超界状态: 用上一根已收盘 K 线判断, true=当前在区间外。
+// 超界状态: 用当前 tick 的 bid/ask 实时判断, true=当前在区间外。
 // 全平止损模式: 超界 -> 全平并暂停; 回区间 -> 自动恢复。
 bool   g_outOfRange   = false;
 
@@ -227,7 +227,7 @@ void DrawLines()
    for(double line = g_center - grid; line >= g_lower - grid*0.5 && gi < 200; line -= grid)
      { DrawHSeg("GT_g_d" + IntegerToString(gi), line, C'200,200,210', STYLE_DOT, 1, true); gi++; }
 
-   // 上界 (红色虚线) / 中线 (黄色实线) / 下界 (绿色虚线): 后画, 放前景层(BACK=false)
+   // 上界 (红色实线) / 中线 (黄色虚线) / 下界 (绿色实线): 后画, 放前景层(BACK=false)
    DrawHSeg("GT_upper",  g_upper,  clrTomato,    STYLE_SOLID, 3, false);
    DrawHSeg("GT_center", g_center, clrYellow,    STYLE_DASH,  1, false);
    DrawHSeg("GT_lower",  g_lower,  clrLimeGreen, STYLE_SOLID, 3, false);
@@ -251,10 +251,10 @@ void DrawLines()
   }
 
 //+------------------------------------------------------------------+
-//| 画越界/恢复线: 黄粗线=越界止损触发(边界±门槛);                  |
-//|              绿粗线=恢复网格界限(边界内侧±缓冲)。               |
-//|  门槛/缓冲按 距离单位(pips/ATR) 取值; ATR模式会变, OnTick 每根   |
-//|  新 bar 刷新位置。仅"全平止损"模式画(关闭无越界处理)。          |
+//| 画越界/恢复线: 黄实粗=越界止损触发(边界±门槛);                  |
+//|              黄虚细=恢复网格界限(边界内侧±缓冲)。               |
+//|  门槛/缓冲恒按 ATR 距离取值, 随波动变;                          |
+//|  OnTick 每根新 bar 刷新位置(越界恒为全平止损, 无开关)。         |
 //+------------------------------------------------------------------+
 void DrawBreakoutLines()
   {
@@ -711,8 +711,8 @@ void TradeGrid(const double grid)
    if(g_lastSellLine != 0.0 && MathAbs(bid - g_lastSellLine) > release) g_lastSellLine = 0.0;
    if(g_lastBuyLine  != 0.0 && MathAbs(ask - g_lastBuyLine)  > release) g_lastBuyLine  = 0.0;
 
-   // 实时价边界确认: 超界判断用的是上一根收盘价, 当前 tick 价可能已在界外。
-   // 开单前用当前 bid/ask 再确认在区间内, 避免在边界外侧开单。
+   // 开单侧边界确认: 用当前 bid/ask 再确认在区间内, 避免在边界外侧开单。
+   // (越界全平由 HandleBreakout 逐 tick 独立处理, 此处仅是开单前的区间校验)
    bool buyInRange  = (ask >= g_lower && ask <= g_upper);   // 开多需当前价在区间内
    bool sellInRange = (bid >= g_lower && bid <= g_upper);   // 开空需当前价在区间内
 
