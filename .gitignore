@@ -2,10 +2,14 @@
 *.ex5
 *.log
 
-# Claude 工作目录（仅 .claude/memory 随仓库走，其余 .claude 内容忽略）
+# Claude 工作目录（memory + 钩子/设置 随仓库走，其余忽略）
 .claude/*
 !.claude/memory/
+!.claude/settings.json
+!.claude/hooks/
 /memory/
+# settings.local.json 含本机绝对路径(autoMemoryDirectory), 保持本地不传
+.claude/settings.local.json
 
 # 临时演示/分析文件
 *.html
