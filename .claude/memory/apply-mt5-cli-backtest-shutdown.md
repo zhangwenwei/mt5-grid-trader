@@ -53,4 +53,11 @@ function Run-BTAndWait {
 - 完成后必须 Force Kill terminal64，它不会自己退出
 - 正确的脚本位置：`bt_configs/run_bt.ps1`（已修复，监听所有端口）
 
-[[apply-gridtrader-breakout-check-backtest]]
+**补充(2026-06 会话)**：
+- ⚠️ `bt_configs/` 目录已删除（连同 run_bt.ps1）；现在回测都即时生成 ini 到 `$env:TEMP`，不依赖项目内子目录。
+- Claude Code 的 PowerShell/Bash 工具**默认超时 120s**，跑多组回测的循环会被掐断 → 必须把工具 `timeout` 调高（最大 600000ms）。
+- `Start-Process` 启的 terminal64 是独立进程，脚本被工具超时杀掉后它**仍在后台跑**（下次 `/config` 会移交给它导致没真跑）→ 已加 **PreToolUse 钩子** `.claude/hooks/kill-mt5-before-backtest.sh`，在每次"含 terminal64+config 的命令"前自动 kill MT5。
+- 真实Tick(Model 8)全年回测较慢（~25–150s，笔数越多越慢），宽区间+大 grid 的探测尤其慢，监控 deadline 要给够。
+- 探测某段实际价幅：宽区间 + `FAE=false` 跑一遍取成交价 min/max（见 [[design-gridtrader-firstatedge-trap]]）。
+
+[[apply-gridtrader-breakout-check-backtest]] [[apply-gridtrader-strategy-regime]]
