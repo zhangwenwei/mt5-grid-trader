@@ -1,0 +1,9 @@
+# 凭证与 token —— 绝对不要提交
+credentials.json
+token.json
+# 运行产物（含邮件发件人/主题）
+*.csv
+*.jsonl
+applied.log
+failed.log
+__pycache__/
