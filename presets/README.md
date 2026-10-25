@@ -1,32 +1,32 @@
-# GridTrader 最佳配置预设 (GridTrader_best.set)
+# GridTrader Best-Configuration Preset (GridTrader_best.set)
 
-回测探索得出的"最优组合"参数,可直接加载到 EA(图表 EA 输入框 / 策略测试器 → Load)。
+The "best combination" of parameters found by backtest research. It can be loaded directly into the EA (chart EA inputs dialog / Strategy Tester → Load).
 
-## ⚠️ 用前必改:上下区间(最重要)
-`.set` 里的 `TradeGrid_UpperPrice=1.11940 / TradeGrid_LowerPrice=1.04430` 是 **EURUSD 2024 的示例值**。
-**部署前必须改成"你的品种、当前近 3 个月的实际高 / 低"**——区间放对是一切的前提(放错=亏甚至爆仓,见 docs/策略探索总结.md)。
-- 因为 `FirstAtEdge=true`,区间要**贴近真实价幅**(别比价幅宽,否则价格碰不到边界、一单不开)。
+## ⚠️ Must change before use: the upper/lower range (most important)
+`TradeGrid_UpperPrice=1.11940 / TradeGrid_LowerPrice=1.04430` in the `.set` are **example values for EURUSD 2024**.
+**Before deploying, change them to the actual high / low of your symbol over roughly the last 3 months.** Placing the range correctly is the precondition for everything (a wrong range = losses or even a margin call, see [docs/STRATEGY_RESEARCH.md](../docs/STRATEGY_RESEARCH.md)).
+- Because `FirstAtEdge=true`, the range must **closely fit the real price swing** (do not make it wider than the swing, or price never touches the bounds and no order ever opens).
 
-## 配置依据(回测结论)
-- **双向 + LossCut=8 + 阶梯手数 0.02↓0.01 + 格28 + TP35**:四个 EUR 交叉盘 2024 全部正收益、零爆仓;LossCut 是单项最有价值开关(净利↑、回撤↓)。
-- 移动止损 / 趋势过滤 = 关(实测无效或有害)。
+## Basis for the configuration (backtest conclusions)
+- **Both directions + LossCut=8 + laddered lots 0.02→0.01 + 28 grids + TP 35**: all four EUR pairs were profitable in 2024 with no margin call; LossCut is the most valuable single switch (higher net profit, lower drawdown).
+- Trailing stop / trend filter = off (tested ineffective or harmful).
 
-## 关键参数
-| 参数 | 值 | 作用 |
+## Key parameters
+| Parameter | Value | Purpose |
 |---|---|---|
-| Upper/Lower | **改成当前近3月高/低** | 区间(最关键) |
-| GridCount | 28 | 格距自适应 |
-| TpThreshold_BasePips | 35 | 止盈(总pips) |
-| InitLots/Reduce | 0.02 / 0.01 | 阶梯手数(边界大) |
-| LossCut_MinOrders | 8 | 超单亏损保护(默认开) |
-| FirstAtEdge | true | 第一单须碰边界 |
+| Upper/Lower | **Change to the high/low of the last ~3 months** | Range (most critical) |
+| GridCount | 28 | Spacing adapts to the range |
+| TpThreshold_BasePips | 35 | Take-profit (total pips) |
+| InitLots/Reduce | 0.02 / 0.01 | Laddered lots (largest at the bound) |
+| LossCut_MinOrders | 8 | Loss cut on order count (**enabled by this preset**; the code default is 0 = off) |
+| FirstAtEdge | true | First order must touch the bound |
 
-## 风险红线
-- 只在**区间盘**用;趋势行情会亏(网格通病)。
-- 阶梯手数 0.02/0.01 是增益也是风险放大器,区间放错会放大亏损;保守可改 InitLots=0.01、Reduce=0.0。
-- 默认按对冲(Hedging)、模拟账户;实盘前先小手数模拟观察。
-- 单边突破时边界全平止损是设计内最坏情况。
+## Risk red lines
+- Use it **only in ranging markets**; trending markets lose money (a common weakness of grids).
+- Laddered lots 0.02/0.01 improve results but also amplify risk; a misplaced range amplifies losses. Conservative option: InitLots=0.01, Reduce=0.0.
+- Assumes a hedging account and a demo account by default; before live trading, observe on demo with small lots first.
+- A full stop-out at the boundary on a one-way breakout is the designed worst case.
 
-## 怎么加载
-- **实盘/模拟图表**:把 EA 拖到图表 → 输入参数页 → 右下"Load" → 选本 .set → 改 Upper/Lower → 确定。
-- **策略测试器**:测试器 → EA 选 box\GridTrader → 输入参数页 "Load" 同上。
+## How to load
+- **Live/demo chart**: drag the EA onto the chart → Inputs tab → "Load" at the bottom right → choose this .set → change Upper/Lower → OK.
+- **Strategy Tester**: Tester → select the EA (e.g. box\GridTrader) → Inputs tab → "Load", same as above.

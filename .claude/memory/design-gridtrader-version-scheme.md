@@ -1,12 +1,12 @@
 ---
 name: design-gridtrader-version-scheme
-description: GridTrader 版本号递增约定 — 从 v1.00 起每版 +0.01
+description: GridTrader version increment convention — +0.01 per version since v1.00
 metadata: 
   node_type: memory
   type: project
   originSessionId: acaae4cb-91bb-4a61-9f1f-0f5a95bfcae8
 ---
 
-GridTrader EA 自 v1.00 正式版起，之后每个版本号 **+0.01 递增**（1.00 → 1.01 → 1.02 …），体现在 `GridTrader.mq5` 的 `#property version`。
+Since the official v1.00 release, every GridTrader EA version **increments by +0.01** (1.00 → 1.01 → 1.02 …), reflected in `#property version` of `GridTrader.mq5`.
 
-**How to apply:** 每次要发版/提交一个新版本时，把 `#property version` 在当前值基础上加 0.01；commit / PR 注释带上该版本号。v1.00 是首个正式版（PR #1，分支 release/v1.00），在此之前是 3.00 等旧开发版号（已废弃，不再沿用）。
+**How to apply:** Whenever a new version is released/committed, add 0.01 to the current `#property version`; commit / PR messages include that version number. v1.00 is the first official release (PR #1, branch release/v1.00); earlier versions used old development numbers such as 3.00 (obsolete, no longer used).

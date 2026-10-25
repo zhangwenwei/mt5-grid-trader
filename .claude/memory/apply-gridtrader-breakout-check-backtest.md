@@ -1,25 +1,25 @@
 ---
 name: apply-gridtrader-breakout-check-backtest
-description: "越界判断方式回测结论——含影线/ATR 最优, ADX 因止损滞后反而最差"
+description: "Breakout check method backtest conclusion — wick/ATR best, ADX worst because its stop lags"
 metadata: 
   node_type: memory
   type: project
   originSessionId: f7d238bd-1d4e-4ddd-b715-e38b0ea37c83
 ---
 
-GridTrader 早期版本曾提供 6 种"越界判断方式"(旧输入 InpBreakoutCheck): 收盘价/实时tick/含影线/ADX/ATR/布林带宽。**v1.06 起已固化为「逐 tick bid/ask + ATR 距离门槛」, 该输入已移除**; 以下是当年的回测对比, 它指导了最终选型:
-回测对比 (USDJPY 区间159.5/158, 2026.01-04, 全平止损+缓冲30pips):
+Early versions of GridTrader offered 6 "breakout check methods" (old input InpBreakoutCheck): close price / real-time tick / wick / ADX / ATR / Bollinger bandwidth. **Since v1.06 this is fixed to "per-tick bid/ask + ATR distance threshold" and that input was removed**; below is the backtest comparison from back then, which guided the final choice:
+Backtest comparison (USDJPY range 159.5/158, 2026.01-04, full close stop + 30 pips buffer):
 
-- 含影线 (CHECK_WICK): 净利22548, 回撤2.6%(最低), 恢复因子3.99(最高) —— 最稳健, 已设为默认。
-- ATR动态门槛: 净利24000(最高), 回撤4.4%。追求净利时用。
-- 布林带宽: 净利23622, 回撤3.8%。
-- 实时tick: 净利22940, 回撤2.8%; 但实盘对点差/滑点/插针敏感, 回测优势打折。
-- 收盘价(基线): 净利16179。
-- ADX确认: 净利15497(比基线还低), 回撤7.8%, 恢复因子0.92 —— **最差**。
+- Wick (CHECK_WICK): net profit 22548, drawdown 2.6% (lowest), recovery factor 3.99 (highest) — most robust, made the default.
+- ATR dynamic threshold: net profit 24000 (highest), drawdown 4.4%. Use when maximizing net profit.
+- Bollinger bandwidth: net profit 23622, drawdown 3.8%.
+- Real-time tick: net profit 22940, drawdown 2.8%; but sensitive to spread/slippage/spikes in live trading, so the backtest advantage shrinks.
+- Close price (baseline): net profit 16179.
+- ADX confirmation: net profit 15497 (below the baseline), drawdown 7.8%, recovery factor 0.92 — **the worst**.
 
-**关键反直觉结论**: 越界处理本质是**止损, 要及时**。ADX"等趋势确认才算越界"=确认滞后=止损太晚=逆势单扛巨亏(回撤暴增)。
-用"等确认"的指标做止损方向就错了; 越灵敏越早止损的方式(含影线/tick)回撤反而最小。
+**Key counter-intuitive conclusion**: breakout handling is essentially **a stop-loss, and it must be timely**. ADX "only counts a breakout after the trend is confirmed" = lagging confirmation = stopping too late = counter-trend orders take huge losses (drawdown explodes).
+Using a "wait for confirmation" indicator for a stop is the wrong direction; the more sensitive, earlier-stopping methods (wick/tick) actually have the smallest drawdown.
 
-**Why**: 我两次理论判断(滞回对对冲锁仓有害、ADX最契合)都被回测数据推翻, 教训是策略选择必须用回测数据定, 不能只凭机制推演。
-**How to apply**: 越界/止损类逻辑优先选"及时触发"的判断(含影线/ATR), 不要选滞后确认型(ADX/MACD)。换品种/区间/时段需重新回测验证, 排名可能变。
-相关: [[design-gridtrader-cooldown]]
+**Why**: two of my theoretical judgments (hysteresis hurts hedge locking, ADX fits best) were both overturned by backtest data; the lesson is that strategy choices must be decided by backtest data, not by reasoning about the mechanism alone.
+**How to apply**: for breakout/stop logic prefer "timely trigger" checks (wick/ATR), not lagging confirmation (ADX/MACD). Re-run the backtests when the symbol/range/period changes; the ranking may change.
+Related: [[design-gridtrader-cooldown]]

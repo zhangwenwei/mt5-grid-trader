@@ -1,19 +1,19 @@
-# MQL5 编译产物与日志
+# MQL5 build output and logs
 *.ex5
 *.log
 
-# Claude 工作目录（memory + 钩子/设置 随仓库走，其余忽略）
+# Claude working directory (memory + hooks/settings are tracked, everything else ignored)
 .claude/*
 !.claude/memory/
 !.claude/settings.json
 !.claude/hooks/
 /memory/
-# settings.local.json 含本机绝对路径(autoMemoryDirectory), 保持本地不传
+# settings.local.json contains local absolute paths (autoMemoryDirectory); keep it local
 .claude/settings.local.json
 
-# 临时演示/分析文件
+# Temporary demo/analysis files
 *.html
 
-# 系统/编辑器
+# OS/editor
 Thumbs.db
 desktop.ini

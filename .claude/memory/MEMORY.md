@@ -1,16 +1,16 @@
-# 记忆索引
+# Memory Index
 
-按「设计 / 应用」两类分组；文件名前缀 `design-` / `apply-` 与之对应。
+Grouped into "design / apply"; the file name prefixes `design-` / `apply-` match the groups.
 
-## 🔧 设计（EA 设计决策 & 代码实现）
-- [GridTrader 冷却阈值设计](design-gridtrader-cooldown.md) — 触碰窗 < 解锁门槛, 防网格线附近抖动重复开单
-- [NormalizeLots(0) 陷阱](design-mql5-normalizelots-zero-minlot.md) — 返回最小手非0, 按算出手数开单前判断原始值>0
-- [GridTrader 版本号约定](design-gridtrader-version-scheme.md) — 自 v1.00 起每版 #property version +0.01 递增
-- [GridTrader FirstAtEdge 陷阱](design-gridtrader-firstatedge-trap.md) — 区间比实际价幅宽时边界碰不到→一单不开(FAE=true)
+## 🔧 Design (EA design decisions & implementation)
+- [GridTrader cooldown threshold design](design-gridtrader-cooldown.md) — touch window < release threshold, prevents duplicate entries from jitter near a grid line
+- [NormalizeLots(0) trap](design-mql5-normalizelots-zero-minlot.md) — returns the min lot, not 0; check the raw value > 0 before opening by a computed lot size
+- [GridTrader version scheme](design-gridtrader-version-scheme.md) — since v1.00 each version bumps #property version by +0.01
+- [GridTrader FirstAtEdge trap](design-gridtrader-firstatedge-trap.md) — range wider than the actual price swing → bounds never touched → no orders at all (FAE=true)
 
-## 📊 应用（回测结论 & 工具/操作经验）
-- [越界判断方式回测结论](apply-gridtrader-breakout-check-backtest.md) — 含影线/ATR最优, ADX因止损滞后反而最差; 止损要及时不要等确认
-- [ADX过滤回测结论](apply-gridtrader-adx-filter-backtest.md) — 对网格策略有害，EURCAD关掉后净利翻倍；越界保护已足够，勿加指标过滤
-- [MT5测试器图形对象](apply-mt5-tester-objects-visual-only.md) — 非视觉回测结果图不画ObjectCreate对象, 只视觉模式显示
-- [MT5 CLI 回测控制流](apply-mt5-cli-backtest-shutdown.md) — 不等进程退出，监控日志 "thread finished" 后立即 Force Kill，否则超时8-10分钟
-- [GridTrader 策略寻优总结](apply-gridtrader-strategy-regime.md) — LossCut最值钱; 静态宽区间>滚动; 双向>单向; 样本内收益不外推, 风控泛化收益看行情
+## 📊 Apply (backtest conclusions & tooling/operations experience)
+- [Breakout check method backtest](apply-gridtrader-breakout-check-backtest.md) — wick/ATR best, ADX worst because its stop lags; stops must be timely, do not wait for confirmation
+- [ADX filter backtest](apply-gridtrader-adx-filter-backtest.md) — harmful for the grid strategy, EURCAD net profit doubled with it off; breakout protection is enough, do not add indicator filters
+- [MT5 tester graphic objects](apply-mt5-tester-objects-visual-only.md) — the non-visual test result chart does not draw ObjectCreate objects, only visual mode shows them
+- [MT5 CLI backtest control flow](apply-mt5-cli-backtest-shutdown.md) — do not wait for the process to exit; watch the log for "thread finished" then Force Kill, otherwise 8-10 min timeouts
+- [GridTrader strategy optimization summary](apply-gridtrader-strategy-regime.md) — LossCut most valuable; static wide range > rolling; both directions > one; do not extrapolate in-sample profit, risk control generalizes, profit depends on the market
