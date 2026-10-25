@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# PreToolUse 钩子：当 PowerShell/Bash 命令是在启动 MT5 回测(命令里同时含 terminal64 和 config)时，
-# 先杀掉占用 terminal64 的现有 MT5 实例(含 GUI)，再让该命令继续。
-# 原因：命令行 `terminal64 /config:` 若已有实例在跑，会移交给现有实例而不真正新跑(用户记忆 apply-mt5-cli-backtest-shutdown)。
-# 用户已授权：回测前可擅自关闭 MT5。仅在"启动回测"的命令上动手，普通命令(只 Get-Process 查询等)不触发。
+# PreToolUse hook: when a PowerShell/Bash command launches an MT5 backtest (the command contains both terminal64 and config),
+# first kill any existing MT5 instance holding terminal64 (including the GUI), then let the command continue.
+# Reason: a command-line `terminal64 /config:` hands over to an already running instance and does not really run (user memory apply-mt5-cli-backtest-shutdown).
+# The user has authorized closing MT5 before backtests. It only acts on "launch backtest" commands; ordinary commands (e.g. a Get-Process query) do not trigger it.
 
 input=$(cat)
 

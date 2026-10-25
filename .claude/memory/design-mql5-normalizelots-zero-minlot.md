@@ -1,18 +1,18 @@
 ---
 name: design-mql5-normalizelots-zero-minlot
-description: "NormalizeLots(0) 返回最小手而非 0, 按算出手数开单前要判断原始值>0"
+description: "NormalizeLots(0) returns the minimum lot, not 0; check the raw value > 0 before opening an order by a computed lot size"
 metadata: 
   node_type: memory
   type: reference
   originSessionId: f7d238bd-1d4e-4ddd-b715-e38b0ea37c83
 ---
 
-MQL5 陷阱: GridTrader 的 NormalizeLots() 末尾有 `lots = MathMax(minLot, ...)`,
-所以 **NormalizeLots(0.0) 返回的不是 0, 而是品种最小手(如0.01)**。
+MQL5 trap: GridTrader's NormalizeLots() ends with `lots = MathMax(minLot, ...)`,
+so **NormalizeLots(0.0) does not return 0 but the symbol's minimum lot (e.g. 0.01)**.
 
-曾导致真实 bug(注: 对冲锁仓功能现已从代码移除, 以下为当时的真实案例, 教训仍适用): 合并对冲锁仓时, 某方向无持仓(总手=0)却凭空开了一笔最小对冲单
-(日志"原卖0.00手->锁买0.01"), 相当于反向裸露+多付点差。
+This caused a real bug (note: the hedge-locking feature has since been removed from the code; the following is the real case from back then, and the lesson still applies): when merging hedge locking, a side with no positions (total lots = 0) still opened a minimum-lot hedge order out of nothing
+(log "original sell 0.00 lots -> lock buy 0.01"), effectively an unhedged opposite position + extra spread paid.
 
-**How to apply**: 任何"按计算手数开单"的地方(对冲/加仓/马丁), 判断是否开单要用**原始手数 vol>0**,
-不能判断 NormalizeLots(vol) 的结果(它永远 >= minLot, 恒为真)。
-相关: [[apply-gridtrader-breakout-check-backtest]]
+**How to apply**: anywhere an order is opened "by a computed lot size" (hedge / add-on / martingale), decide whether to open using **the raw lot size vol > 0**,
+never the result of NormalizeLots(vol) (it is always >= minLot, always true).
+Related: [[apply-gridtrader-breakout-check-backtest]]

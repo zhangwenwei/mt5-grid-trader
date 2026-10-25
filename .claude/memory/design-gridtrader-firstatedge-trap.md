@@ -1,19 +1,19 @@
 ---
 name: design-gridtrader-firstatedge-trap
-description: FirstAtEdge=true 时若网格区间设得比实际价幅还宽, 边界永远碰不到 -> 一单不开(回测全0)
+description: With FirstAtEdge=true, if the grid range is set wider than the actual price swing, the bounds are never touched -> no orders at all (backtest all zeros)
 metadata: 
   node_type: memory
   type: project
   originSessionId: dc2518a7-ab9b-4725-8cce-a27146ab06b2
 ---
 
-GridTrader 的 `TradeGrid_FirstAtEdge=true`(默认)要求某方向空仓时第一单必须先触碰**裸边界**(空碰上界 / 多碰下界)才开。
+GridTrader's `TradeGrid_FirstAtEdge=true` (default) requires that when a side is flat, its first order only opens after price touches the **bare bound** (sell: upper / buy: lower).
 
-**坑**: 若把 `TradeGrid_UpperPrice/LowerPrice` 设得比该时段价格**实际走到的高/低还宽**, 边界就永远碰不到 → 一单都不开, 回测净利=0、笔数=0(本会话踩过两次, 还误以为脚本坏了)。
+**Trap**: if `TradeGrid_UpperPrice/LowerPrice` are set **wider than the actual high/low** price reached in that period, the bounds are never touched → not a single order opens, backtest net profit = 0 and trades = 0 (hit twice in one session, and mistaken for a broken script).
 
 **How to apply**:
-- 用 FAE=true 时, 区间必须贴近该时段**实际价幅**(边界要够得着)。
-- 若有意把区间设得宽于价幅(如按分析/回看带定区间, 留缓冲), 必须改 `FAE=false`, 否则完全不交易。
-- 探测某段实际价幅: 用一个很宽的区间 + `FAE=false` 跑一遍, 取成交价 `deal ... at X` 的 min/max 即该段价幅。
+- With FAE=true, the range must closely fit the **actual price swing** of the period (the bounds must be reachable).
+- If you deliberately set the range wider than the swing (e.g. a range from analysis / a look-back band with a margin), you must set `FAE=false`, otherwise nothing trades at all.
+- To probe the actual swing of a period: run once with a very wide range + `FAE=false` and take the min/max of the fill prices `deal ... at X`; that is the period's swing.
 
-相关: [[apply-gridtrader-strategy-regime]]
+Related: [[apply-gridtrader-strategy-regime]]
